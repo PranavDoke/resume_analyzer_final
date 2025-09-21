@@ -666,6 +666,14 @@ def show_single_analysis():
 def analyze_single_resume(resume_file, jd_file, save_to_db, generate_report):
     """Analyze a single resume"""
     try:
+        # Clear any cached analysis results to ensure fresh analysis
+        if hasattr(st.session_state, 'analysis_results'):
+            st.session_state.analysis_results = []
+        
+        # Reinitialize analyzer to clear any internal caching
+        st.session_state.analyzer = None
+        initialize_analyzer()
+        
         # Save uploaded files temporarily
         with st.spinner("Processing files..."):
             resume_path = save_uploaded_file(resume_file, "resume")
@@ -2027,11 +2035,16 @@ def show_system_status():
                 st.warning(f"{component}: ⚠️ {status}")
 
 def save_uploaded_file(uploaded_file, prefix):
-    """Save uploaded file temporarily and return path"""
+    """Save uploaded file temporarily with unique timestamp and return path"""
+    import time
     temp_dir = Path("temp_uploads")
     temp_dir.mkdir(exist_ok=True)
     
-    file_path = temp_dir / f"{prefix}_{uploaded_file.name}"
+    # Add timestamp to make filename unique
+    timestamp = str(int(time.time() * 1000))  # milliseconds
+    file_extension = Path(uploaded_file.name).suffix
+    unique_filename = f"{prefix}_{timestamp}_{uploaded_file.name}"
+    file_path = temp_dir / unique_filename
     
     with open(file_path, "wb") as f:
         f.write(uploaded_file.getbuffer())
