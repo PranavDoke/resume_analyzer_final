@@ -1378,7 +1378,7 @@ def display_individual_student_result(result, student_number):
         """, unsafe_allow_html=True)
         
         # Action buttons for individual student
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2)
         
         with col1:
             if st.button(f"📄 Full Report", key=f"full_report_{student_number}"):
@@ -1396,9 +1396,7 @@ def display_individual_student_result(result, student_number):
                 key=f"export_json_{student_number}"
             )
         
-        with col3:
-            if st.button(f"📧 Send Results", key=f"send_results_{student_number}"):
-                st.info(f"Results would be sent to {result['resume_data'].get('email', 'email not found')}")
+        # col3 removed (email button removed for cleaner UI)
         
         st.markdown("---")
 
@@ -1571,7 +1569,7 @@ def display_dropdown_individual_analysis(result, student_number):
         
         # Export options for individual resume
         st.markdown("#### 📤 Export Options")
-        export_col1, export_col2, export_col3, export_col4 = st.columns(4)
+        export_col1, export_col2, export_col3 = st.columns(3)
         
         with export_col1:
             try:
@@ -1615,9 +1613,7 @@ def display_dropdown_individual_analysis(result, student_number):
             except Exception:
                 st.error("Excel export failed")
         
-        with export_col4:
-            if st.button(f"📧 Email", key=f"dropdown_email_{student_number}", use_container_width=True):
-                st.success(f"Results would be sent to {resume_data.get('email', 'email not found')}")
+        # export_col4 removed (email button removed for cleaner UI)
 
 def display_detailed_individual_analysis(result, student_number):
     """Display comprehensive detailed analysis for an individual student"""
@@ -1845,7 +1841,7 @@ def display_detailed_individual_analysis(result, student_number):
     
     # Action Buttons
     st.markdown("#### 🔧 Actions & Export Options")
-    action_col1, action_col2, action_col3, action_col4 = st.columns(4)
+    action_col1, action_col2, action_col3 = st.columns(3)
     
     with action_col1:
         # Export individual JSON
@@ -1883,9 +1879,7 @@ def display_detailed_individual_analysis(result, student_number):
             use_container_width=True
         )
     
-    with action_col4:
-        if st.button(f"📧 Email", key=f"email_results_{student_number}", use_container_width=True):
-            st.success(f"Results would be sent to {resume_data.get('email', 'email not found')}")
+    # action_col4 removed (email button removed for cleaner UI)
     
     # Additional action row
     st.markdown("---")
