@@ -883,28 +883,51 @@ def display_detailed_report(results):
     
     # Export options
     st.markdown("### 📤 Export Options")
+    st.markdown("*Download analysis results in various formats*")
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        if st.button("📄 Export as JSON"):
+        # JSON Export
+        try:
             json_str = json.dumps(results, indent=2, default=str)
             st.download_button(
-                label="Download JSON",
+                label="📄 Download JSON",
                 data=json_str,
                 file_name=f"analysis_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                mime="application/json"
+                mime="application/json",
+                use_container_width=True
             )
+        except Exception as e:
+            st.error(f"JSON export failed: {str(e)}")
     
     with col2:
-        if st.button("📊 Export as CSV"):
-            # Create simplified CSV data
+        # CSV Export
+        try:
             csv_data = create_csv_from_results([results])
             st.download_button(
-                label="Download CSV",
+                label="📊 Download CSV",
                 data=csv_data,
                 file_name=f"analysis_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                mime="text/csv"
+                mime="text/csv",
+                use_container_width=True
             )
+        except Exception as e:
+            st.error(f"CSV export failed: {str(e)}")
+    
+    with col3:
+        # Excel Export
+        try:
+            excel_data = create_excel_from_results([results])
+            st.download_button(
+                label="📊 Download Excel",
+                data=excel_data,
+                file_name=f"analysis_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+        except Exception as e:
+            st.error(f"Excel export failed: {str(e)}")
+            st.info("Note: Excel export requires xlsxwriter package")
 
 def show_batch_analysis():
     """Show batch analysis interface"""
