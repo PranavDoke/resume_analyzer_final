@@ -9,7 +9,26 @@ from typing import Dict, Any, Optional
 from collections import Counter
 import re
 import math
-from datetime import datetime
+
+# PDF processing imports
+try:
+    import PyPDF2
+    PYPDF2_AVAILABLE = True
+except ImportError:
+    PYPDF2_AVAILABLE = False
+    print("PyPDF2 not installed")
+
+try:
+    import fitz  # PyMuPDF
+    PYMUPDF_AVAILABLE = True
+except ImportError:
+    PYMUPDF_AVAILABLE = False
+
+try:
+    import pdfplumber
+    PDFPLUMBER_AVAILABLE = True
+except ImportError:
+    PDFPLUMBER_AVAILABLE = False
 
 # Add src directory to path for absolute imports
 sys.path.append(os.path.join(os.path.dirname(__file__)))
@@ -82,7 +101,7 @@ class ResumeAnalyzer:
             resume_keywords = self._extract_keywords(resume_clean)
             job_keywords = self._extract_keywords(job_clean)
             
-            # Calculate different scoring components
+            # Calculate different scoring components with minimum guarantees
             keyword_score = max(10.0, self._calculate_keyword_score(resume_keywords, job_keywords))
             skill_score = max(15.0, self._calculate_skill_score(resume_skills, job_skills))
             context_score = max(10.0, self._calculate_context_score(resume_clean, job_clean))
@@ -289,18 +308,8 @@ class ResumeAnalyzer:
         job_phrases = self._extract_phrases(job_text)
         resume_phrases = self._extract_phrases(resume_text)
         
-        # If no specific phrases found, fall back to simple word overlap
-        if not job_phrases or not resume_phrases:
-            # Simple word overlap as fallback
-            resume_words = set(resume_text.lower().split())
-            job_words = set(job_text.lower().split())
-            
-            if not job_words:
-                return 25.0
-                
-            common_words = resume_words.intersection(job_words)
-            overlap_ratio = len(common_words) / len(job_words)
-            return min(75.0, overlap_ratio * 100)
+        if not job_phrases:
+            return 50.0
         
         matched_phrases = 0
         total_phrases = len(job_phrases)
@@ -308,12 +317,12 @@ class ResumeAnalyzer:
         for phrase in job_phrases:
             # Check for exact or partial matches
             for resume_phrase in resume_phrases:
-                if phrase.lower() in resume_phrase.lower() or resume_phrase.lower() in phrase.lower():
+                if phrase in resume_phrase or resume_phrase in phrase:
                     matched_phrases += 1
                     break
         
-        context_score = (matched_phrases / total_phrases) * 100 if total_phrases > 0 else 25.0
-        return min(100.0, max(15.0, context_score))  # Minimum 15% score
+        context_score = (matched_phrases / total_phrases) * 100 if total_phrases > 0 else 50.0
+        return min(100.0, context_score)
     
     def _extract_phrases(self, text: str) -> list:
         """Extract meaningful phrases from text"""
@@ -410,72 +419,25 @@ class ResumeAnalyzer:
         return seniority_score
     
     def _extract_years_experience(self, text: str) -> int:
-        """Extract years of experience from text with enhanced patterns"""
+        """Extract years of experience from text"""
         import re
-        from datetime import datetime
         
-        # Pattern 1: Direct experience mentions
-        experience_patterns = [
-            r'(\d+)\+?\s*years?\s+(?:of\s+)?(?:experience|work|exp)',
-            r'(?:experience|work|exp).*?(\d+)\+?\s*years?',
-            r'(\d+)\+?\s*year\s+(?:experience|work|exp)',
-            r'(\d+)\+?\s*yrs?\s+(?:experience|work|exp)',
-            r'(?:over|more than|above)\s+(\d+)\s+years?',
-            r'(\d+)\s*-\s*(\d+)\s*years?\s+(?:experience|work)',
+        patterns = [
+            r'(\d+)\+?\s*years?\s+(?:of\s+)?(?:experience|work)',
+            r'(?:experience|work).*?(\d+)\+?\s*years?',
+            r'(\d+)\+?\s*year\s+(?:experience|work)',
         ]
         
         years = []
-        text_lower = text.lower()
-        
-        for pattern in experience_patterns:
-            matches = re.findall(pattern, text_lower, re.IGNORECASE)
+        for pattern in patterns:
+            matches = re.findall(pattern, text)
             for match in matches:
                 try:
-                    if isinstance(match, tuple):
-                        # Handle range patterns like "3-5 years"
-                        years.extend([int(m) for m in match if m.isdigit()])
-                    else:
-                        years.append(int(match))
-                except (ValueError, TypeError):
+                    years.append(int(match))
+                except ValueError:
                     continue
         
-        # Pattern 2: Try to calculate from employment dates
-        date_patterns = [
-            r'(\d{4})\s*[-–]\s*(\d{4})',  # 2020-2023
-            r'(\d{4})\s*[-–]\s*present',  # 2020-present
-            r'(\d{4})\s*[-–]\s*current',  # 2020-current
-            r'(\d{4})\s*to\s*(\d{4})',   # 2020 to 2023
-            r'(\d{4})\s*to\s*present',   # 2020 to present
-        ]
-        
-        current_year = datetime.now().year
-        employment_years = []
-        
-        for pattern in date_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            for match in matches:
-                try:
-                    if isinstance(match, tuple) and len(match) == 2:
-                        start_year = int(match[0])
-                        if match[1].lower() in ['present', 'current']:
-                            end_year = current_year
-                        else:
-                            end_year = int(match[1])
-                        
-                        if start_year <= end_year <= current_year:
-                            employment_years.append(end_year - start_year)
-                except (ValueError, TypeError):
-                    continue
-        
-        # Combine both methods
-        all_years = years + employment_years
-        
-        if all_years:
-            # Return the maximum reasonable experience
-            max_years = max(all_years)
-            return min(max_years, 50)  # Cap at 50 years to avoid unrealistic values
-        
-        return 0
+        return max(years) if years else None
     
     def _generate_explanation(self, overall_score: float, keyword_score: float, 
                             skill_score: float, context_score: float, experience_score: float) -> str:
@@ -578,14 +540,23 @@ Recommendations:
             analysis_result = self.analyze_resume(resume_text, job_text)
             
             # Extract additional metadata for better analysis
-            candidate_name = self._extract_candidate_name(resume_text)
+            print(f"🔍 ANALYZING FILE: {resume_file_path}")
+            print(f"📄 RESUME TEXT LENGTH: {len(resume_text)}")
+            print(f"📝 FIRST 200 CHARS: {repr(resume_text[:200])}")
             
+            candidate_name = self._extract_candidate_name(resume_text)
+            print(f"👤 EXTRACTED NAME: {candidate_name}")
+
             # Fallback: try to extract name from filename if extraction failed
-            if candidate_name == "Unknown Candidate":
+            if candidate_name == "Unknown":
                 candidate_name = self._extract_name_from_filename(resume_file_path)
+                print(f"📁 FILENAME FALLBACK NAME: {candidate_name}")
             
             email = self._extract_email(resume_text)
             phone = self._extract_phone(resume_text)
+            
+            print(f"📧 EMAIL: {email}")
+            print(f"📞 PHONE: {phone}")
             
             # Generate hiring recommendation
             hiring_decision = self._determine_hiring_decision(analysis_result['overall_score'])
@@ -680,7 +651,7 @@ Recommendations:
                     'risk_factors': ['Analysis system error']
                 },
                 'detailed_results': {
-                    'hard_matching': {'overall_score': 0, 'keyword_score': 0, 'skills_score': 0, 'tfidf_score': 0, 'bm25_score': 0},
+                    'hard_matching': {'overall_score': 0, 'keyword_score': 0, 'skills_score': 0},
                     'soft_matching': {'combined_semantic_score': 0, 'semantic_score': 0, 'embedding_score': 0},
                     'llm_analysis': {'llm_score': 0, 'llm_verdict': 'error', 'gap_analysis': '', 'personalized_feedback': f"Analysis failed: {e}", 'improvement_suggestions': []},
                     'scoring_details': {'component_scores': {}, 'weighted_scores': {}}
@@ -733,57 +704,53 @@ Recommendations:
             raise ValueError(f"Unable to read file: {e}")
     
     def _read_pdf_content(self, file_path: str) -> str:
-        """Enhanced PDF text extraction with multiple fallback methods"""
-        text = ""
+        """Enhanced PDF text extraction with multiple methods"""
+        print(f"Reading PDF: {file_path}")
         
-        # Method 1: Try PyMuPDF (fitz) - most reliable
-        try:
-            import fitz  # PyMuPDF
-            doc = fitz.open(file_path)
-            for page_num in range(doc.page_count):
-                page = doc[page_num]
-                text += page.get_text() + "\n"
-            doc.close()
-            if text.strip():
+        # Try PyMuPDF first (most robust)
+        if PYMUPDF_AVAILABLE:
+            try:
+                import fitz
+                doc = fitz.open(file_path)
+                text = ""
+                for page in doc:
+                    text += page.get_text() + "\n"
+                doc.close()
+                print(f"PyMuPDF extracted {len(text)} characters")
                 return text
-        except ImportError:
-            pass
-        except Exception as e:
-            print(f"PyMuPDF extraction failed: {e}")
+            except Exception as e:
+                print(f"PyMuPDF failed: {e}")
         
-        # Method 2: Try pdfplumber
-        try:
-            import pdfplumber
-            with pdfplumber.open(file_path) as pdf:
-                for page in pdf.pages:
-                    page_text = page.extract_text()
-                    if page_text:
-                        text += page_text + "\n"
-            if text.strip():
+        # Try pdfplumber second
+        if PDFPLUMBER_AVAILABLE:
+            try:
+                import pdfplumber
+                text = ""
+                with pdfplumber.open(file_path) as pdf:
+                    for page in pdf.pages:
+                        page_text = page.extract_text()
+                        if page_text:
+                            text += page_text + "\n"
+                print(f"pdfplumber extracted {len(text)} characters")
                 return text
-        except ImportError:
-            pass
-        except Exception as e:
-            print(f"pdfplumber extraction failed: {e}")
+            except Exception as e:
+                print(f"pdfplumber failed: {e}")
         
-        # Method 3: Try PyPDF2
-        try:
-            import PyPDF2
-            text = ""
-            with open(file_path, 'rb') as file:
-                pdf_reader = PyPDF2.PdfReader(file)
-                for page in pdf_reader.pages:
-                    text += page.extract_text() + "\n"
-            if text.strip():
+        # Try PyPDF2 as fallback
+        if PYPDF2_AVAILABLE:
+            try:
+                text = ""
+                with open(file_path, 'rb') as file:
+                    pdf_reader = PyPDF2.PdfReader(file)
+                    for page in pdf_reader.pages:
+                        text += page.extract_text() + "\n"
+                print(f"PyPDF2 extracted {len(text)} characters")
                 return text
-        except ImportError:
-            print("PyPDF2 not available")
-        except Exception as e:
-            print(f"PyPDF2 extraction failed: {e}")
+            except Exception as e:
+                print(f"PyPDF2 failed: {e}")
         
-        # Method 4: Fallback - try to read as text (will fail but graceful)
-        print(f"All PDF extraction methods failed for {file_path}, returning empty content")
-        return ""
+        print("All PDF libraries failed, treating as text file")
+        return self._read_text_content(file_path)
     
     def _read_docx_content(self, file_path: str) -> str:
         """Simple DOCX text extraction"""
@@ -802,212 +769,193 @@ Recommendations:
             return self._read_text_content(file_path)
     
     def _extract_candidate_name(self, resume_text: str) -> str:
-        """Extract candidate name from resume with improved pattern matching"""
+        """Extract candidate name from resume"""
         import re
         
-        # Clean text and get first few lines
-        lines = resume_text.strip().split('\n')[:20]  # Check first 20 lines for better coverage
+        # Clean PDF artifacts and normalize text
+        text = re.sub(r'[^\w\s\n\-\'\.]', ' ', resume_text)
+        text = ' '.join(text.split())
         
-        # Clean each line of common PDF artifacts
-        cleaned_lines = []
-        for line in lines:
-            line = line.strip()
-            # Remove common PDF artifacts
-            line = re.sub(r'[^\w\s.,\-]', ' ', line)  # Keep only letters, numbers, spaces, and basic punctuation
-            line = re.sub(r'\s+', ' ', line)  # Normalize spaces
-            if line:
-                cleaned_lines.append(line)
+        # Remove common PDF artifacts and file paths
+        text = re.sub(r'C:\\.*?\.pdf', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'[A-Z]:\\[^\s]*', '', text)
         
-        # Common patterns for names (more flexible)
-        name_patterns = [
-            # Standard format: First Last
-            r'^[A-Z][a-z]+ [A-Z][a-z]+(?:\s[A-Z][a-z]+)*$',
-            # With middle initial: First M. Last
-            r'^[A-Z][a-z]+ [A-Z]\. [A-Z][a-z]+$',
-            # All caps: FIRST LAST
-            r'^[A-Z]+ [A-Z]+(?:\s[A-Z]+)*$',
-            # Mixed case: First LAST or FIRST Last
-            r'^[A-Z][a-z]+ [A-Z]+$',
-            r'^[A-Z]+ [A-Z][a-z]+$',
-            # With comma: Last, First
-            r'^[A-Z][a-z]+,\s[A-Z][a-z]+$',
-            # Flexible pattern for common name formats
-            r'^[A-Za-z]+ [A-Za-z]+(?:\s[A-Za-z]+)?$',
-            # Names with dots or hyphens
-            r'^[A-Za-z]+[.\-]?\s[A-Za-z]+(?:\s[A-Za-z]+)?$'
+        # Special handling for names split across lines (like "Chandra\nshekar")
+        lines = resume_text.split('\n')[:10]
+        if len(lines) >= 3:
+            # Check if first two non-empty lines could be first and last name
+            non_empty_lines = [line.strip() for line in lines if line.strip()]
+            if len(non_empty_lines) >= 2:
+                potential_first = non_empty_lines[0].strip()
+                potential_last = non_empty_lines[1].strip()
+                
+                # Check if they look like name parts
+                if (potential_first.isalpha() and len(potential_first) > 1 and
+                    potential_last.isalpha() and len(potential_last) > 1 and
+                    potential_first[0].isupper() and potential_last[0].isupper()):
+                    potential_name = f"{potential_first} {potential_last}"
+                    if self._is_valid_name(potential_name):
+                        return potential_name
+        
+        patterns = [
+            # Pattern 1: Name followed by contact info - more specific
+            r'^([A-Z][a-z]+\s+[A-Z][a-z]+)\s*(?:\n|\s)(?:(?:\+?\d+[\-\.\s]*\d+)|(?:[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}))',
+            
+            # Pattern 2: Classic first name last name at start
+            r'^([A-Z][a-z]{2,}\s+[A-Z][a-z]{2,})\s*$',
+            
+            # Pattern 3: Name with middle initial
+            r'^([A-Z][a-z]+\s+[A-Z]\.\s+[A-Z][a-z]+)\s*$',
+            
+            # Pattern 4: Traditional format - First Last (more strict)
+            r'\b([A-Z][a-z]{2,}\s+[A-Z][a-z]{2,})\b',
+            
+            # Pattern 5: Professional header format
+            r'^([A-Z][a-z]+\s+[A-Z][a-z]+)\s*\n',
+            
+            # Pattern 6: Name in title case
+            r'([A-Z][a-z]+\s+[A-Z][a-z]+)(?:\s*\n|\s*$)',
+            
+            # Pattern 7: Name before location markers
+            r'([A-Z][a-z]+\s+[A-Z][a-z]+)\s*(?:New York|California|Texas|Florida|Illinois|Pennsylvania|Ohio|Georgia|North Carolina|Michigan)',
+            
+            # Pattern 8: Name with hyphenated last name
+            r'\b([A-Z][a-z]+\s+[A-Z][a-z]+\-[A-Z][a-z]+)\b',
+            
+            # Pattern 9: Simple two-word pattern with stricter validation
+            r'^([A-Z][a-z]{1,}\s[A-Z][a-z]{1,})\s*$'
         ]
         
-        # Look for explicit name labels first
-        for line in cleaned_lines:
-            # Check for explicit name labels
-            name_indicators = [
-                r'name\s*:?\s*([A-Z][a-zA-Z\s]+)',
-                r'candidate\s*:?\s*([A-Z][a-zA-Z\s]+)',
-                r'^([A-Z][A-Z\s]{3,30})$',  # All caps names (adjusted length)
-                r'resume\s+of\s+([A-Z][a-zA-Z\s]+)',
-                r'cv\s+of\s+([A-Z][a-zA-Z\s]+)'
-            ]
-            
-            for pattern in name_indicators:
-                match = re.search(pattern, line, re.IGNORECASE)
-                if match:
-                    name = match.group(1).strip()
-                    # Clean up the extracted name
-                    name = re.sub(r'\s+', ' ', name)
-                    if 2 <= len(name.split()) <= 4 and len(name) <= 50:
-                        return name.title()  # Proper case
-        
-        # Standard extraction with cleaned lines
-        for line in cleaned_lines:
-            # Skip empty lines and lines that are too long or short
-            if not line or len(line) < 3 or len(line) > 60:
-                continue
+        for i, pattern in enumerate(patterns):
+            matches = re.findall(pattern, text[:500], re.MULTILINE | re.IGNORECASE)
+            for match in matches:
+                name = match.strip()
                 
-            # Skip lines with common non-name keywords
-            skip_keywords = ['email', 'phone', 'address', 'experience', 'education', 
-                           'skills', 'objective', 'summary', 'profile', 'resume',
-                           'curriculum', 'vitae', 'cv', '@', 'www', 'http', 'linkedin',
-                           'github', 'portfolio', 'location', 'qualification', 'contact',
-                           'mobile', 'qualification', 'professional', 'career', 'personal']
-            
-            if any(keyword in line.lower() for keyword in skip_keywords):
-                continue
-            
-            # Skip lines with numbers (except single digits that might be in names)
-            if re.search(r'\d{2,}', line):
-                continue
-            
-            # Skip lines with special characters (except common name chars)
-            if re.search(r'[#$%&*+=<>{}|\[\]\\]', line):
-                continue
-            
-            # Test against name patterns
-            for pattern in name_patterns:
-                if re.match(pattern, line.strip()):
-                    # Clean up the name
-                    name = line.strip()
-                    if ',' in name:  # Handle "Last, First" format
-                        parts = name.split(',')
-                        name = f"{parts[1].strip()} {parts[0].strip()}"
-                    return name.title()  # Ensure proper case
-            
-            # Enhanced fallback: if line has 2-4 words with reasonable characteristics
-            words = line.split()
-            if 2 <= len(words) <= 4:
-                # Check if words could be names
-                valid_name = True
-                for word in words:
-                    # Must start with letter, reasonable length, mostly letters
-                    if (not word[0].isalpha() or 
-                        not (2 <= len(word) <= 20) or 
-                        not re.match(r'^[A-Za-z][A-Za-z\-\.]*$', word)):
-                        valid_name = False
-                        break
-                
-                if valid_name:
-                    # Additional check: at least one word should start with uppercase
-                    if any(word[0].isupper() for word in words):
-                        # Extra validation: shouldn't be common words
-                        common_words = {'and', 'the', 'of', 'in', 'to', 'for', 'with', 'on', 'by', 'from'}
-                        if not any(word.lower() in common_words for word in words):
-                            return " ".join(word.title() for word in words)
+                # Validate the extracted name
+                if self._is_valid_name(name):
+                    # Convert all caps to proper case
+                    if name.isupper():
+                        name = name.title()
+                    return name
         
-        # Last resort: look for any capitalized words that might be names
-        for line in cleaned_lines[:10]:  # Only check first 10 lines for this
-            words = line.split()
-            potential_names = []
-            for word in words:
-                if (len(word) >= 3 and 
-                    word[0].isupper() and 
-                    word.isalpha() and 
-                    word.lower() not in ['the', 'and', 'of', 'in', 'resume', 'cv']):
-                    potential_names.append(word)
-            
-            if 2 <= len(potential_names) <= 3:
-                return " ".join(potential_names)
-        
-        return "Unknown Candidate"
+        return "Unknown"
     
-    def _extract_name_from_filename(self, file_path: str) -> str:
-        """Extract candidate name from filename as fallback"""
-        import re
-        import os
+    def _extract_name_from_filename(self, file_path):
+        """
+        Extract candidate name from filename as fallback
+        """
+        if not file_path:
+            return "Unknown"
+            
+        try:
+            filename = os.path.basename(file_path)
+            name_part = os.path.splitext(filename)[0]
+            
+            # Clean common filename patterns
+            name_part = re.sub(r'(?i)(resume|cv|portfolio)[\s\-_]*', '', name_part)
+            name_part = re.sub(r'[\-_]+', ' ', name_part)
+            name_part = re.sub(r'\s+', ' ', name_part).strip()
+            
+            # Remove numbers from the end (like "resume - 3")
+            name_part = re.sub(r'\s*\d+\s*$', '', name_part)
+            
+            # Extract potential names from filename
+            words = name_part.split()
+            if len(words) >= 2:
+                # Take first two words that look like names
+                potential_name = ' '.join(words[:2])
+                if self._is_valid_name_simple(potential_name):
+                    return potential_name.title()
+            elif len(words) == 1 and len(words[0]) > 2:
+                # Single word that might be a name - return it
+                return words[0].title()
+            
+            return "Unknown"
+        except Exception:
+            return "Unknown"
+    
+    def _is_valid_name_simple(self, name):
+        """
+        Simplified name validation for filename extraction
+        """
+        if not name or len(name) < 2:
+            return False
         
-        # Get filename without extension and path
-        filename = os.path.basename(file_path)
-        name_part = os.path.splitext(filename)[0]
+        # Just check it's mostly alphabetic and doesn't contain obvious non-name words
+        words = name.split()
+        if len(words) < 1 or len(words) > 3:
+            return False
+            
+        for word in words:
+            if not word.replace('-', '').replace("'", "").isalpha():
+                return False
+            if len(word) < 2 or len(word) > 20:
+                return False
+                
+        return True
+    
+    def _is_valid_name(self, name):
+        """
+        Validate if extracted text is a valid name
+        """
+        if not name or len(name) < 2:
+            return False
         
-        # Common filename patterns to clean
-        # Remove common prefixes/suffixes
-        clean_patterns = [
-            r'^(resume|cv|curriculum|vitae)[\s_\-]*',  # Remove resume/cv prefixes
-            r'[\s_\-]*(resume|cv|curriculum|vitae)$',  # Remove resume/cv suffixes
-            r'^batch[\s_\-]*',  # Remove batch prefix
-            r'[\s_\-]*\d+$',    # Remove trailing numbers
-            r'^.*_resume_\d+_', # Remove batch processing patterns
-            r'^.*batch.*_\d+_', # Remove batch patterns
+        # Check for invalid patterns
+        invalid_patterns = [
+            r'\b(?:RESUME|CV|PORTFOLIO|PROFILE|CONTACT|EMAIL|PHONE|ADDRESS|OBJECTIVE|SUMMARY|EXPERIENCE|EDUCATION|SKILLS|PROJECTS|CERTIFICATIONS|REFERENCES|OVERVIEW)\b',
+            r'\b(?:SOFTWARE|DEVELOPER|ENGINEER|ANALYST|MANAGER|CONSULTANT|ARCHITECT|SPECIALIST|SENIOR|JUNIOR|LEAD|PRINCIPAL|DIRECTOR|COORDINATOR)\b',
+            r'\b(?:YEARS?|MONTHS?|DAYS?|HOURS?)\b',
+            r'\b(?:PAGE|DOCUMENT|FILE|PDF|DOC|DOCX)\b',
+            r'\b(?:TITLE|POSITION|ROLE|JOB|WORK|CAREER|PROFESSIONAL)\b',
+            r'\b(?:OBJ|OBJECT|OBJECTIVE|GOAL|AIM|TARGET)\b',  # Added to catch "obj Title"
+            r'@',
+            r'\d{3,}',  # Long numbers
+            r'[^\w\s\'\-\.]',  # Special characters except apostrophes, hyphens, periods
+            r'^[a-z]',  # Starts with lowercase
+            r'\b(?:THE|AND|OR|OF|IN|ON|AT|TO|FOR|WITH|BY)\b'
         ]
         
-        for pattern in clean_patterns:
-            name_part = re.sub(pattern, '', name_part, flags=re.IGNORECASE)
+        for pattern in invalid_patterns:
+            if re.search(pattern, name.upper()):
+                return False
         
-        # Replace underscores and hyphens with spaces
-        name_part = re.sub(r'[_\-]+', ' ', name_part)
+        # Must have at least one space (first and last name)
+        if ' ' not in name.strip():
+            return False
         
-        # Clean extra spaces
-        name_part = re.sub(r'\s+', ' ', name_part).strip()
+        # Check word count
+        words = name.split()
+        if len(words) < 2 or len(words) > 4:
+            return False
         
-        # Check if we have a reasonable name
-        words = name_part.split()
-        if 2 <= len(words) <= 4:
-            # Check if words look like names
-            if all(word.isalpha() and len(word) >= 2 for word in words):
-                return " ".join(word.title() for word in words)
+        # Each word should be reasonable length
+        for word in words:
+            if len(word) < 1 or len(word) > 15:
+                return False
         
-        return "Unknown Candidate"
+        return True
     
     def _extract_email(self, resume_text: str) -> str:
-        """Extract email from resume with improved pattern matching"""
+        """Extract email from resume"""
         import re
-        
-        # More comprehensive email pattern
-        email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b'
-        emails = re.findall(email_pattern, resume_text, re.IGNORECASE)
-        
-        if emails:
-            # Return the first valid-looking email
-            for email in emails:
-                # Skip obviously fake emails
-                if not any(word in email.lower() for word in ['example', 'test', 'dummy', 'fake']):
-                    return email
-            return emails[0]  # Fallback to first email if all seem fake
-        
-        return "Not found"
+        email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+        emails = re.findall(email_pattern, resume_text)
+        return emails[0] if emails else "Not found"
     
     def _extract_phone(self, resume_text: str) -> str:
-        """Extract phone number from resume with improved patterns"""
+        """Extract phone number from resume"""
         import re
-        
-        # Comprehensive phone patterns
         phone_patterns = [
-            r'\+\d{1,3}[-.\s]?\d{10}',  # +91 9876543210
-            r'\+\d{1,3}[-.\s]?\d{3}[-.\s]?\d{3}[-.\s]?\d{4}',  # +1-555-0123
-            r'\+\d{1,3}[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}',  # International format
-            r'\(\d{3}\)\s*\d{3}[-.\s]?\d{4}',  # (123) 456-7890
-            r'\d{10}',  # 1234567890 (10 digits)
-            r'\d{3}[-.\s]?\d{3}[-.\s]?\d{4}',  # 123-456-7890 or 123.456.7890
-            r'\+\d{1,3}\s?\d{3,4}\s?\d{3,4}\s?\d{3,4}',  # International variations
+            r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b',
+            r'\(\d{3}\)\s*\d{3}[-.]?\d{4}',
+            r'\+\d{1,3}[-.\s]?\d{3,4}[-.\s]?\d{3,4}[-.\s]?\d{3,4}'
         ]
         
         for pattern in phone_patterns:
             phones = re.findall(pattern, resume_text)
             if phones:
-                # Return the first match in original format
-                phone = phones[0]
-                # Basic validation - should have at least 10 digits
-                digits_only = re.sub(r'[^\d]', '', phone)
-                if len(digits_only) >= 10:
-                    return phone
+                return phones[0]
         
         return "Not found"
     
@@ -1120,75 +1068,3 @@ Recommendations:
             weaknesses.append("Contextual fit could be improved")
         
         return weaknesses
-    
-    def get_system_statistics(self, days: int = 30) -> dict:
-        """Get system statistics for dashboard"""
-        return {
-            'total_analyses': 0,
-            'average_score': 0.0,
-            'success_rate': 95.0,
-            'processing_time': 2.3,
-            'total_resumes': 0,
-            'total_jobs': 0,
-            'match_level_distribution': {
-                'excellent': 5,
-                'good': 10,
-                'fair': 8,
-                'poor': 2
-            },
-            'hiring_decision_distribution': {
-                'hire': 12,
-                'maybe': 8,
-                'reject': 5
-            }
-        }
-    
-    def health_check(self) -> dict:
-        """Perform system health check"""
-        components = {}
-        
-        try:
-            # Check basic analyzer functionality
-            components['analyzer'] = 'healthy'
-            
-            # Check API connectivity if available
-            try:
-                import openai
-                components['llm_api'] = 'healthy'
-            except ImportError:
-                components['llm_api'] = 'not available'
-            
-            # Check file processing capabilities
-            try:
-                import PyPDF2
-                components['pdf_processing'] = 'healthy'
-            except ImportError:
-                components['pdf_processing'] = 'degraded - PyPDF2 not available'
-            
-            # Check embedding capabilities
-            try:
-                from sentence_transformers import SentenceTransformer
-                components['embeddings'] = 'healthy'
-            except ImportError:
-                components['embeddings'] = 'degraded - sentence-transformers not available'
-            
-            # Determine overall status
-            errors = [comp for comp in components.values() if 'error' in str(comp)]
-            degraded = [comp for comp in components.values() if 'degraded' in str(comp) or 'not available' in str(comp)]
-            
-            if errors:
-                status = 'unhealthy'
-            elif degraded:
-                status = 'degraded'
-            else:
-                status = 'healthy'
-            
-        except Exception as e:
-            status = 'unhealthy'
-            components['error'] = str(e)
-        
-        return {
-            'status': status,
-            'components': components,
-            'timestamp': datetime.now().isoformat()
-        }
