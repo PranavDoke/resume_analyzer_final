@@ -270,17 +270,38 @@ st.markdown("""
     }
     
     .stButton > button {
-        background-color: #007acc;
-        color: white;
-        border: none;
-        border-radius: 0.25rem;
-        padding: 0.5rem 1rem;
-        font-weight: 600;
-        width: 100%;
+        background-color: #007acc !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 8px !important;
+        padding: 0.75rem 1.5rem !important;
+        font-weight: 600 !important;
+        width: 100% !important;
+        font-size: 0.95rem !important;
+        transition: all 0.3s ease !important;
+        box-shadow: 0 2px 8px rgba(0, 122, 204, 0.3) !important;
     }
     
     .stButton > button:hover {
-        background-color: #005a9e;
+        background-color: #005a9e !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 4px 12px rgba(0, 122, 204, 0.4) !important;
+    }
+    
+    .stButton > button:active {
+        transform: translateY(0px) !important;
+    }
+    
+    /* Special styling for navigation buttons */
+    .nav-button {
+        background: linear-gradient(135deg, #007acc 0%, #005a9e 100%) !important;
+        border-radius: 12px !important;
+        padding: 1rem 2rem !important;
+        font-size: 1.1rem !important;
+        font-weight: bold !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.5px !important;
+        box-shadow: 0 4px 15px rgba(0, 122, 204, 0.3) !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -292,7 +313,17 @@ if 'analysis_results' not in st.session_state:
     st.session_state.analysis_results = []
 if 'current_job_id' not in st.session_state:
     st.session_state.current_job_id = None
-# Remove the current_page from session state as we'll use a different approach
+if 'current_page' not in st.session_state:
+    st.session_state.current_page = "dashboard"
+
+def add_back_to_dashboard_button():
+    """Add a back to dashboard button"""
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if st.button("🏠 Back to Dashboard", key="back_to_dashboard", use_container_width=True):
+            st.session_state.current_page = "dashboard"
+            st.rerun()
+    st.markdown("---")
 
 def initialize_analyzer():
     """Initialize the resume analyzer"""
@@ -321,40 +352,52 @@ def main():
     if not initialize_analyzer():
         st.stop()
     
-    # Sidebar navigation - Use radio buttons instead of selectbox
+    # Sidebar navigation - Simple selectbox
     st.sidebar.markdown("### Navigation")
     
-    # Define pages
-    pages = {
-        "🏠 Dashboard": "dashboard",
-        "📝 Analyze Resume": "analyze", 
-        "📊 Batch Analysis": "batch",
-        "🔍 View Results": "results",
-        "📈 Reports & Analytics": "analytics",
-        "⚙️ System Status": "status"
-    }
+    # Define pages with simple mapping
+    page_options = [
+        "🏠 Dashboard",
+        "📝 Analyze Resume", 
+        "📊 Batch Analysis",
+        "🔍 View Results",
+        "📈 Reports & Analytics",
+        "⚙️ System Status"
+    ]
     
-    # Use radio buttons for navigation (more reliable in deployed environments)
-    selected_page_label = st.sidebar.radio(
-        "Choose a page:",
-        list(pages.keys()),
-        key="main_navigation"
-    )
+    # Check if navigation was triggered by button
+    if st.session_state.current_page == "analyze":
+        selected_page = "📝 Analyze Resume"
+        st.session_state.current_page = "dashboard"  # Reset after navigation
+    elif st.session_state.current_page == "batch":
+        selected_page = "📊 Batch Analysis"
+        st.session_state.current_page = "dashboard"  # Reset after navigation
+    elif st.session_state.current_page == "results":
+        selected_page = "🔍 View Results"
+        st.session_state.current_page = "dashboard"  # Reset after navigation
+    elif st.session_state.current_page == "analytics":
+        selected_page = "📈 Reports & Analytics"
+        st.session_state.current_page = "dashboard"  # Reset after navigation
+    else:
+        # Simple selectbox navigation
+        selected_page = st.sidebar.selectbox(
+            "Choose a page:",
+            page_options,
+            index=0
+        )
     
-    selected_page = pages[selected_page_label]
-    
-    # Route to different pages based on selection
-    if selected_page == "dashboard":
+    # Route to different pages
+    if selected_page == "🏠 Dashboard":
         show_dashboard()
-    elif selected_page == "analyze":
+    elif selected_page == "📝 Analyze Resume":
         show_single_analysis()
-    elif selected_page == "batch":
+    elif selected_page == "📊 Batch Analysis":
         show_batch_analysis()
-    elif selected_page == "results":
+    elif selected_page == "🔍 View Results":
         show_results_viewer()
-    elif selected_page == "analytics":
+    elif selected_page == "📈 Reports & Analytics":
         show_reports_analytics()
-    elif selected_page == "status":
+    elif selected_page == "⚙️ System Status":
         show_system_status()
 
 def show_dashboard():
@@ -413,7 +456,7 @@ def show_dashboard():
     st.markdown("### 🚀 Main Features")
     st.markdown("*Core analysis and management tools*")
     
-    # Feature boxes in single row
+    # Feature boxes in single row - Remove problematic forms
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
@@ -430,12 +473,6 @@ def show_dashboard():
             </p>
         </div>
         """, unsafe_allow_html=True)
-        
-        # Use form to prevent page reload issues
-        with st.form(key="nav_to_analyze"):
-            if st.form_submit_button("Analyze Resume", use_container_width=True):
-                st.session_state.main_navigation = "📝 Analyze Resume"
-                st.rerun()
     
     with col2:
         st.markdown("""
@@ -451,11 +488,6 @@ def show_dashboard():
             </p>
         </div>
         """, unsafe_allow_html=True)
-        
-        with st.form(key="nav_to_batch"):
-            if st.form_submit_button("Batch Analysis", use_container_width=True):
-                st.session_state.main_navigation = "📊 Batch Analysis"
-                st.rerun()
     
     with col3:
         st.markdown("""
@@ -471,11 +503,6 @@ def show_dashboard():
             </p>
         </div>
         """, unsafe_allow_html=True)
-        
-        with st.form(key="nav_to_results"):
-            if st.form_submit_button("View Results", use_container_width=True):
-                st.session_state.main_navigation = "🔍 View Results"
-                st.rerun()
     
     with col4:
         st.markdown("""
@@ -491,11 +518,35 @@ def show_dashboard():
             </p>
         </div>
         """, unsafe_allow_html=True)
-        
-        with st.form(key="nav_to_analytics"):
-            if st.form_submit_button("Reports & Analytics", use_container_width=True):
-                st.session_state.main_navigation = "📈 Reports & Analytics"
-                st.rerun()
+    
+    st.markdown("---")
+    
+    # Get Started Section
+    st.markdown("### 🚀 Get Started")
+    st.markdown("*Quick actions to begin analyzing resumes*")
+    
+    # Quick action buttons
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        if st.button("📄 Start Single Analysis", key="quick_single", use_container_width=True):
+            st.session_state.current_page = "analyze"
+            st.rerun()
+    
+    with col2:
+        if st.button("📊 Start Batch Analysis", key="quick_batch", use_container_width=True):
+            st.session_state.current_page = "batch"
+            st.rerun()
+    
+    with col3:
+        if st.button("🔍 View Past Results", key="quick_results", use_container_width=True):
+            st.session_state.current_page = "results"
+            st.rerun()
+    
+    with col4:
+        if st.button("📈 View Analytics", key="quick_analytics", use_container_width=True):
+            st.session_state.current_page = "analytics"
+            st.rerun()
     
     st.markdown("---")
     
@@ -570,14 +621,6 @@ def show_dashboard():
                             <div style="color: #ccc; font-size: 0.8rem;">Success Rate</div>
                         </div>
                     </div>
-                    
-                    <div style="margin-top: 1rem; text-align: center;">
-                        <button style="background: linear-gradient(45deg, #667eea, #764ba2); 
-                                      color: white; border: none; padding: 0.5rem 1.5rem; 
-                                      border-radius: 25px; cursor: pointer; font-size: 0.85rem; font-weight: 500;">
-                            View Full Report
-                        </button>
-                    </div>
                 </div>
                 """, unsafe_allow_html=True)
                 
@@ -603,31 +646,12 @@ def show_dashboard():
         </div>
         """, unsafe_allow_html=True)
         
-        # Center the start button
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            with st.form(key="start_first_analysis"):
-                if st.form_submit_button("🚀 Start Your First Analysis", type="primary", use_container_width=True):
-                    st.session_state.main_navigation = "📝 Analyze Resume"
-                    st.rerun()
-        
-        # Quick start buttons
-        col1, col2 = st.columns(2)
-        with col1:
-            with st.form(key="quick_single_analysis"):
-                if st.form_submit_button("📝 Single Resume Analysis", type="primary", use_container_width=True):
-                    st.session_state.main_navigation = "📝 Analyze Resume"
-                    st.rerun()
-        
-        with col2:
-            with st.form(key="quick_batch_analysis"):
-                if st.form_submit_button("📊 Batch Processing", type="secondary", use_container_width=True):
-                    st.session_state.main_navigation = "📊 Batch Analysis"
-                    st.rerun()
+        st.info("💡 **Quick Start:** Use the sidebar navigation to go to 'Analyze Resume' and upload your first files!")
 
 def show_single_analysis():
     """Show single resume analysis interface"""
     st.markdown("## 📝 Single Resume Analysis")
+    add_back_to_dashboard_button()
     
     # File upload section
     col1, col2 = st.columns(2)
@@ -934,6 +958,7 @@ def display_detailed_report(results):
 def show_batch_analysis():
     """Show batch analysis interface"""
     st.markdown("## 📊 Batch Analysis")
+    add_back_to_dashboard_button()
     st.write("Analyze multiple resumes against a single job description.")
     
     # Job description upload
@@ -1559,7 +1584,7 @@ def display_dropdown_individual_analysis(result, student_number):
                 recommendations = analysis_results.get('recommendations', [])
                 if recommendations:
                     for i, rec in enumerate(recommendations[:5], 1):
-                        st.write(f"• {rec}")
+                        st.write(f"{i}. {rec}")
                 else:
                     st.write("No specific recommendations available")
         
@@ -1568,25 +1593,28 @@ def display_dropdown_individual_analysis(result, student_number):
                 risk_factors = analysis_results.get('risk_factors', [])
                 if risk_factors:
                     for i, risk in enumerate(risk_factors[:5], 1):
-                        st.write(f"• {risk}")
+                        st.write(f"{i}. {risk}")
                 else:
                     st.write("No major concerns identified")
         
         # Hiring recommendation
         st.markdown("#### 🎯 Hiring Recommendation")
-        
-        hiring_rec = result['hiring_recommendation']
-        st.markdown(f"""
-        <div style="background: {decision_color}; color: white; padding: 0.5rem 1rem; border-radius: 8px; margin: 0.5rem 0;">
-            <strong>Decision:</strong> {hiring_decision}<br>
-            <strong>Success Probability:</strong> {success_probability:.1f}%<br>
-            <strong>Reasoning:</strong> {hiring_rec.get('reasoning', 'No reasoning provided')}
+        recommendation_html = f"""
+        <div style="background: {decision_color}; color: white; padding: 1rem; border-radius: 8px; margin: 0.5rem 0;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="font-size: 1.2rem; font-weight: bold;">📋 {hiring_decision}</div>
+                <div style="font-size: 1rem;">{success_probability:.1f}% Success Rate</div>
+            </div>
+            <div style="margin-top: 0.5rem; font-size: 0.9rem;">
+                <strong>Reasoning:</strong> {hiring_rec.get('reasoning', 'No detailed reasoning provided')}
+            </div>
         </div>
-        """, unsafe_allow_html=True)
+        """
+        st.markdown(recommendation_html, unsafe_allow_html=True)
         
         # Export options for individual resume
         st.markdown("#### 📤 Export Options")
-        export_col1, export_col2, export_col3, export_col4 = st.columns(4)
+        export_col1, export_col2, export_col3 = st.columns(3)
         
         with export_col1:
             try:
@@ -1596,7 +1624,7 @@ def display_dropdown_individual_analysis(result, student_number):
                     data=json_str,
                     file_name=f"resume_{student_number}_{candidate_name.replace(' ', '_')}.json",
                     mime="application/json",
-                    key=f"dropdown_json_{student_number}_{hash(str(result))}",  # Make key unique
+                    key=f"dropdown_json_{student_number}_{time.time()}",  # Use timestamp for unique key
                     use_container_width=True
                 )
             except Exception:
@@ -1610,7 +1638,7 @@ def display_dropdown_individual_analysis(result, student_number):
                     data=csv_data,
                     file_name=f"resume_{student_number}_{candidate_name.replace(' ', '_')}.csv",
                     mime="text/csv",
-                    key=f"dropdown_csv_{student_number}_{hash(str(result))}",  # Make key unique
+                    key=f"dropdown_csv_{student_number}_{time.time()}",  # Use timestamp for unique key
                     use_container_width=True
                 )
             except Exception:
@@ -1624,21 +1652,16 @@ def display_dropdown_individual_analysis(result, student_number):
                     data=excel_data,
                     file_name=f"resume_{student_number}_{candidate_name.replace(' ', '_')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key=f"dropdown_excel_{student_number}_{hash(str(result))}",  # Make key unique
+                    key=f"dropdown_excel_{student_number}_{time.time()}",  # Use timestamp for unique key
                     use_container_width=True
                 )
             except Exception:
                 st.error("Excel export failed")
-        
-        with export_col4:
-            # Use form to prevent key conflicts
-            with st.form(key=f"email_form_{student_number}_{hash(str(result))}"):
-                if st.form_submit_button("📧 Email", use_container_width=True):
-                    st.success(f"Results would be sent to {resume_data.get('email', 'email not found')}")
 
 def show_results_viewer():
     """Show results viewer interface"""
     st.markdown("## 🔍 View Analysis Results")
+    add_back_to_dashboard_button()
     st.write("Browse and search previous analysis results.")
     
     # Filters
@@ -1671,6 +1694,7 @@ def show_results_viewer():
 def show_reports_analytics():
     """Show reports and analytics interface"""
     st.markdown("## 📈 Reports & Analytics")
+    add_back_to_dashboard_button()
     
     # Report type selection
     report_type = st.selectbox(
@@ -1727,6 +1751,7 @@ def show_job_analysis_report():
 def show_system_status():
     """Show system status and health check"""
     st.markdown("## ⚙️ System Status")
+    add_back_to_dashboard_button()
     
     # Health check
     if st.button("🔍 Run Health Check"):
@@ -1922,7 +1947,7 @@ def create_excel_from_results(results):
                     'Email': resume_data.get('email', 'N/A'),
                     'Phone': resume_data.get('phone', 'N/A'),
                     'Resume Filename': metadata.get('resume_filename', 'Unknown'),
-                    'Overall Score': overall_score,
+                                       'Overall Score': overall_score,
                     'Match Level': analysis_results.get('match_level', 'unknown'),
                     'Confidence': confidence,
                     'Hiring Decision': hiring_rec.get('decision', 'UNKNOWN'),
@@ -2129,3 +2154,8 @@ def create_excel_from_results(results):
         st.error(f"Error creating Excel file: {str(e)}")
         # Fallback to CSV if Excel creation fails
         return create_csv_from_results(results).encode('utf-8')
+
+
+# Main execution
+if __name__ == "__main__":
+    main()
