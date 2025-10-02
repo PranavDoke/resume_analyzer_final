@@ -270,17 +270,38 @@ st.markdown("""
     }
     
     .stButton > button {
-        background-color: #007acc;
-        color: white;
-        border: none;
-        border-radius: 0.25rem;
-        padding: 0.5rem 1rem;
-        font-weight: 600;
-        width: 100%;
+        background-color: #007acc !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 8px !important;
+        padding: 0.75rem 1.5rem !important;
+        font-weight: 600 !important;
+        width: 100% !important;
+        font-size: 0.95rem !important;
+        transition: all 0.3s ease !important;
+        box-shadow: 0 2px 8px rgba(0, 122, 204, 0.3) !important;
     }
     
     .stButton > button:hover {
-        background-color: #005a9e;
+        background-color: #005a9e !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 4px 12px rgba(0, 122, 204, 0.4) !important;
+    }
+    
+    .stButton > button:active {
+        transform: translateY(0px) !important;
+    }
+    
+    /* Special styling for navigation buttons */
+    .nav-button {
+        background: linear-gradient(135deg, #007acc 0%, #005a9e 100%) !important;
+        border-radius: 12px !important;
+        padding: 1rem 2rem !important;
+        font-size: 1.1rem !important;
+        font-weight: bold !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.5px !important;
+        box-shadow: 0 4px 15px rgba(0, 122, 204, 0.3) !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -294,6 +315,15 @@ if 'current_job_id' not in st.session_state:
     st.session_state.current_job_id = None
 if 'current_page' not in st.session_state:
     st.session_state.current_page = "🏠 Dashboard"
+
+def add_back_to_dashboard_button():
+    """Add a back to dashboard button"""
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if st.button("🏠 Back to Dashboard", key="back_to_dashboard", use_container_width=True):
+            st.session_state.current_page = "🏠 Dashboard"
+            st.rerun()
+    st.markdown("---")
 
 def initialize_analyzer():
     """Initialize the resume analyzer"""
@@ -626,6 +656,7 @@ def show_dashboard():
 def show_single_analysis():
     """Show single resume analysis interface"""
     st.markdown("## 📝 Single Resume Analysis")
+    add_back_to_dashboard_button()
     
     # File upload section
     col1, col2 = st.columns(2)
@@ -901,6 +932,7 @@ def display_detailed_report(results):
 def show_batch_analysis():
     """Show batch analysis interface"""
     st.markdown("## 📊 Batch Analysis")
+    add_back_to_dashboard_button()
     st.write("Analyze multiple resumes against a single job description.")
     
     # Job description upload
@@ -1908,6 +1940,7 @@ def display_detailed_individual_analysis(result, student_number):
 def show_results_viewer():
     """Show results viewer interface"""
     st.markdown("## 🔍 View Analysis Results")
+    add_back_to_dashboard_button()
     st.write("Browse and search previous analysis results.")
     
     # Filters
@@ -1940,6 +1973,7 @@ def show_results_viewer():
 def show_reports_analytics():
     """Show reports and analytics interface"""
     st.markdown("## 📈 Reports & Analytics")
+    add_back_to_dashboard_button()
     
     # Report type selection
     report_type = st.selectbox(
@@ -1996,6 +2030,7 @@ def show_job_analysis_report():
 def show_system_status():
     """Show system status and health check"""
     st.markdown("## ⚙️ System Status")
+    add_back_to_dashboard_button()
     
     # Health check
     if st.button("🔍 Run Health Check"):
