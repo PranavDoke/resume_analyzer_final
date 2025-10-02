@@ -325,7 +325,7 @@ def main():
     # Sidebar navigation
     st.sidebar.markdown("### Navigation")
     
-    # Get current page index for selectbox
+    # Define pages
     pages = [
         "🏠 Dashboard",
         "📝 Analyze Resume", 
@@ -335,18 +335,24 @@ def main():
         "⚙️ System Status"
     ]
     
-    current_index = pages.index(st.session_state.current_page) if st.session_state.current_page in pages else 0
+    # Get current page index
+    try:
+        current_index = pages.index(st.session_state.current_page)
+    except (ValueError, KeyError):
+        current_index = 0
+        st.session_state.current_page = pages[0]
     
-    page = st.sidebar.selectbox(
+    # Dropdown navigation
+    selected_page = st.sidebar.selectbox(
         "Choose a page:",
         pages,
         index=current_index,
         key="page_selector"
     )
     
-    # Only update session state if selectbox value actually changed
-    if page != st.session_state.current_page:
-        st.session_state.current_page = page
+    # Update page if selection changed
+    if selected_page != st.session_state.current_page:
+        st.session_state.current_page = selected_page
         st.rerun()
     
     # Route to different pages based on session state
