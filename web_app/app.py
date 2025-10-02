@@ -292,8 +292,7 @@ if 'analysis_results' not in st.session_state:
     st.session_state.analysis_results = []
 if 'current_job_id' not in st.session_state:
     st.session_state.current_job_id = None
-if 'current_page' not in st.session_state:
-    st.session_state.current_page = "🏠 Dashboard"
+# Remove the current_page from session state as we'll use a different approach
 
 def initialize_analyzer():
     """Initialize the resume analyzer"""
@@ -322,51 +321,40 @@ def main():
     if not initialize_analyzer():
         st.stop()
     
-    # Sidebar navigation
+    # Sidebar navigation - Use radio buttons instead of selectbox
     st.sidebar.markdown("### Navigation")
     
     # Define pages
-    pages = [
-        "🏠 Dashboard",
-        "📝 Analyze Resume", 
-        "📊 Batch Analysis",
-        "🔍 View Results",
-        "📈 Reports & Analytics",
-        "⚙️ System Status"
-    ]
+    pages = {
+        "🏠 Dashboard": "dashboard",
+        "📝 Analyze Resume": "analyze", 
+        "📊 Batch Analysis": "batch",
+        "🔍 View Results": "results",
+        "📈 Reports & Analytics": "analytics",
+        "⚙️ System Status": "status"
+    }
     
-    # Get current page index
-    try:
-        current_index = pages.index(st.session_state.current_page)
-    except (ValueError, KeyError):
-        current_index = 0
-        st.session_state.current_page = pages[0]
-    
-    # Dropdown navigation
-    selected_page = st.sidebar.selectbox(
+    # Use radio buttons for navigation (more reliable in deployed environments)
+    selected_page_label = st.sidebar.radio(
         "Choose a page:",
-        pages,
-        index=current_index,
-        key="page_selector"
+        list(pages.keys()),
+        key="main_navigation"
     )
     
-    # Update page if selection changed
-    if selected_page != st.session_state.current_page:
-        st.session_state.current_page = selected_page
-        st.rerun()
+    selected_page = pages[selected_page_label]
     
-    # Route to different pages based on session state
-    if st.session_state.current_page == "🏠 Dashboard":
+    # Route to different pages based on selection
+    if selected_page == "dashboard":
         show_dashboard()
-    elif st.session_state.current_page == "📝 Analyze Resume":
+    elif selected_page == "analyze":
         show_single_analysis()
-    elif st.session_state.current_page == "📊 Batch Analysis":
+    elif selected_page == "batch":
         show_batch_analysis()
-    elif st.session_state.current_page == "🔍 View Results":
+    elif selected_page == "results":
         show_results_viewer()
-    elif st.session_state.current_page == "📈 Reports & Analytics":
+    elif selected_page == "analytics":
         show_reports_analytics()
-    elif st.session_state.current_page == "⚙️ System Status":
+    elif selected_page == "status":
         show_system_status()
 
 def show_dashboard():
@@ -443,9 +431,11 @@ def show_dashboard():
         </div>
         """, unsafe_allow_html=True)
         
-        if st.button("Analyze Resume", use_container_width=True, key="analyze_btn"):
-            st.session_state.current_page = "📝 Analyze Resume"
-            st.rerun()
+        # Use form to prevent page reload issues
+        with st.form(key="nav_to_analyze"):
+            if st.form_submit_button("Analyze Resume", use_container_width=True):
+                st.session_state.main_navigation = "📝 Analyze Resume"
+                st.rerun()
     
     with col2:
         st.markdown("""
@@ -462,16 +452,17 @@ def show_dashboard():
         </div>
         """, unsafe_allow_html=True)
         
-        if st.button("Batch Analysis", use_container_width=True, key="batch_btn"):
-            st.session_state.current_page = "📊 Batch Analysis"
-            st.rerun()
+        with st.form(key="nav_to_batch"):
+            if st.form_submit_button("Batch Analysis", use_container_width=True):
+                st.session_state.main_navigation = "📊 Batch Analysis"
+                st.rerun()
     
     with col3:
         st.markdown("""
         <div style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); 
                     padding: 1.5rem; border-radius: 12px; text-align: center; 
                     color: white; margin-bottom: 1rem; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
-            <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">�</div>
+            <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">🔍</div>
             <h4 style="margin: 0.5rem 0; font-size: 1.1rem;">View Results</h4>
             <p style="margin: 0; font-size: 0.85rem; opacity: 0.9;">
                 Browse History<br>
@@ -481,9 +472,10 @@ def show_dashboard():
         </div>
         """, unsafe_allow_html=True)
         
-        if st.button("View Results", use_container_width=True, key="results_btn"):
-            st.session_state.current_page = "🔍 View Results"
-            st.rerun()
+        with st.form(key="nav_to_results"):
+            if st.form_submit_button("View Results", use_container_width=True):
+                st.session_state.main_navigation = "🔍 View Results"
+                st.rerun()
     
     with col4:
         st.markdown("""
@@ -500,9 +492,10 @@ def show_dashboard():
         </div>
         """, unsafe_allow_html=True)
         
-        if st.button("Reports & Analytics", use_container_width=True, key="analytics_btn"):
-            st.session_state.current_page = "📈 Reports & Analytics"
-            st.rerun()
+        with st.form(key="nav_to_analytics"):
+            if st.form_submit_button("Reports & Analytics", use_container_width=True):
+                st.session_state.main_navigation = "📈 Reports & Analytics"
+                st.rerun()
     
     st.markdown("---")
     
@@ -613,21 +606,24 @@ def show_dashboard():
         # Center the start button
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            if st.button("🚀 Start Your First Analysis", type="primary", use_container_width=True, key="start_first_analysis"):
-                st.session_state.current_page = "📝 Analyze Resume"
-                st.rerun()
+            with st.form(key="start_first_analysis"):
+                if st.form_submit_button("🚀 Start Your First Analysis", type="primary", use_container_width=True):
+                    st.session_state.main_navigation = "📝 Analyze Resume"
+                    st.rerun()
         
         # Quick start buttons
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("📝 Single Resume Analysis", type="primary", use_container_width=True):
-                st.session_state.current_page = "📝 Analyze Resume"
-                st.rerun()
+            with st.form(key="quick_single_analysis"):
+                if st.form_submit_button("📝 Single Resume Analysis", type="primary", use_container_width=True):
+                    st.session_state.main_navigation = "📝 Analyze Resume"
+                    st.rerun()
         
         with col2:
-            if st.button("📊 Batch Processing", type="secondary", use_container_width=True):
-                st.session_state.current_page = "📊 Batch Analysis"
-                st.rerun()
+            with st.form(key="quick_batch_analysis"):
+                if st.form_submit_button("📊 Batch Processing", type="secondary", use_container_width=True):
+                    st.session_state.main_navigation = "📊 Batch Analysis"
+                    st.rerun()
 
 def show_single_analysis():
     """Show single resume analysis interface"""
@@ -1407,7 +1403,7 @@ def display_individual_student_result(result, student_number):
         
         hiring_rec = result['hiring_recommendation']
         st.markdown(f"""
-        <div style="background: {decision_color}; color: white; padding: 1rem; border-radius: 8px; margin: 0.5rem 0;">
+        <div style="background: {decision_color}; color: white; padding: 0.5rem 1rem; border-radius: 8px; margin: 0.5rem 0;">
             <strong>Decision:</strong> {hiring_decision}<br>
             <strong>Success Probability:</strong> {success_probability:.1f}%<br>
             <strong>Reasoning:</strong> {hiring_rec.get('reasoning', 'No reasoning provided')}
@@ -1563,48 +1559,30 @@ def display_dropdown_individual_analysis(result, student_number):
                 recommendations = analysis_results.get('recommendations', [])
                 if recommendations:
                     for i, rec in enumerate(recommendations[:5], 1):
-                        st.write(f"{i}. {rec}")
+                        st.write(f"• {rec}")
                 else:
                     st.write("No specific recommendations available")
         
         with feedback_col2:
-            with st.expander(f"⚠️ Areas for Improvement - Resume #{student_number}", expanded=False):
+            with st.expander(f"⚠️ Areas to Develop - Resume #{student_number}", expanded=False):
                 risk_factors = analysis_results.get('risk_factors', [])
                 if risk_factors:
                     for i, risk in enumerate(risk_factors[:5], 1):
-                        st.write(f"{i}. {risk}")
+                        st.write(f"• {risk}")
                 else:
                     st.write("No major concerns identified")
         
-        # LLM Analysis Details
-        if llm_analysis:
-            with st.expander(f"🤖 AI-Powered Analysis - Resume #{student_number}", expanded=False):
-                if 'gap_analysis' in llm_analysis:
-                    st.markdown("**🔍 Gap Analysis:**")
-                    gap_analysis = llm_analysis['gap_analysis']
-                    if isinstance(gap_analysis, dict):
-                        st.write(gap_analysis.get('detailed_analysis', 'No detailed analysis available'))
-                    else:
-                        st.write(gap_analysis)
-                
-                if 'personalized_feedback' in llm_analysis:
-                    st.markdown("**💬 Personalized Feedback:**")
-                    st.write(llm_analysis['personalized_feedback'])
-        
         # Hiring recommendation
         st.markdown("#### 🎯 Hiring Recommendation")
-        recommendation_html = f"""
-        <div style="background: {decision_color}; color: white; padding: 1rem; border-radius: 8px; margin: 0.5rem 0;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div style="font-size: 1.2rem; font-weight: bold;">📋 {hiring_decision}</div>
-                <div style="font-size: 1rem;">{success_probability:.1f}% Success Rate</div>
-            </div>
-            <div style="margin-top: 0.5rem; font-size: 0.9rem;">
-                <strong>Reasoning:</strong> {hiring_rec.get('reasoning', 'No detailed reasoning provided')}
-            </div>
+        
+        hiring_rec = result['hiring_recommendation']
+        st.markdown(f"""
+        <div style="background: {decision_color}; color: white; padding: 0.5rem 1rem; border-radius: 8px; margin: 0.5rem 0;">
+            <strong>Decision:</strong> {hiring_decision}<br>
+            <strong>Success Probability:</strong> {success_probability:.1f}%<br>
+            <strong>Reasoning:</strong> {hiring_rec.get('reasoning', 'No reasoning provided')}
         </div>
-        """
-        st.markdown(recommendation_html, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
         
         # Export options for individual resume
         st.markdown("#### 📤 Export Options")
@@ -1618,7 +1596,7 @@ def display_dropdown_individual_analysis(result, student_number):
                     data=json_str,
                     file_name=f"resume_{student_number}_{candidate_name.replace(' ', '_')}.json",
                     mime="application/json",
-                    key=f"dropdown_json_{student_number}",
+                    key=f"dropdown_json_{student_number}_{hash(str(result))}",  # Make key unique
                     use_container_width=True
                 )
             except Exception:
@@ -1632,7 +1610,7 @@ def display_dropdown_individual_analysis(result, student_number):
                     data=csv_data,
                     file_name=f"resume_{student_number}_{candidate_name.replace(' ', '_')}.csv",
                     mime="text/csv",
-                    key=f"dropdown_csv_{student_number}",
+                    key=f"dropdown_csv_{student_number}_{hash(str(result))}",  # Make key unique
                     use_container_width=True
                 )
             except Exception:
@@ -1646,307 +1624,17 @@ def display_dropdown_individual_analysis(result, student_number):
                     data=excel_data,
                     file_name=f"resume_{student_number}_{candidate_name.replace(' ', '_')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key=f"dropdown_excel_{student_number}",
+                    key=f"dropdown_excel_{student_number}_{hash(str(result))}",  # Make key unique
                     use_container_width=True
                 )
             except Exception:
                 st.error("Excel export failed")
         
         with export_col4:
-            if st.button(f"📧 Email", key=f"dropdown_email_{student_number}", use_container_width=True):
-                st.success(f"Results would be sent to {resume_data.get('email', 'email not found')}")
-
-def display_detailed_individual_analysis(result, student_number):
-    """Display comprehensive detailed analysis for an individual student"""
-    # Extract student data safely
-    resume_data = result.get('resume_data', {})
-    analysis_results = result.get('analysis_results', {})
-    hiring_rec = result.get('hiring_recommendation', {})
-    metadata = result.get('metadata', {})
-    detailed_results = result.get('detailed_results', {})
-    
-    candidate_name = resume_data.get('candidate_name', 'Unknown Candidate')
-    filename = metadata.get('resume_filename', 'Unknown File')
-    
-    # Safely convert numeric values
-    try:
-        overall_score = float(analysis_results.get('overall_score', 0))
-    except (ValueError, TypeError):
-        overall_score = 0.0
-        
-    try:
-        success_probability = float(hiring_rec.get('success_probability', 0))
-    except (ValueError, TypeError):
-        success_probability = 0.0
-        
-    try:
-        confidence = float(analysis_results.get('confidence', 0))
-    except (ValueError, TypeError):
-        confidence = 0.0
-    
-    match_level = analysis_results.get('match_level', 'unknown')
-    hiring_decision = hiring_rec.get('decision', 'UNKNOWN')
-    
-    # Color coding for decisions
-    decision_colors = {
-        'HIRE': '#2ecc71',
-        'INTERVIEW': '#f39c12',
-        'MAYBE': '#e67e22', 
-        'REJECT': '#e74c3c'
-    }
-    decision_color = decision_colors.get(hiring_decision, '#95a5a6')
-    
-    # Create main container for each student
-    st.markdown(f"""
-    <div style="background: linear-gradient(145deg, #f8f9fa 0%, #e9ecef 100%); 
-               padding: 2rem; border-radius: 15px; margin: 2rem 0; 
-               border-left: 6px solid {decision_color}; box-shadow: 0 6px 20px rgba(0,0,0,0.1);">
-        <div style="text-align: center; margin-bottom: 2rem;">
-            <h2 style="color: #2c3e50; margin: 0;">📄 Resume Analysis #{student_number}</h2>
-            <h3 style="color: {decision_color}; margin: 0.5rem 0;">{candidate_name}</h3>
-            <p style="color: #6c757d; margin: 0; font-size: 1rem;">📂 {filename}</p>
-        </div>
-        <div style="display: flex; justify-content: center; gap: 2rem; margin-bottom: 2rem;">
-            <div style="text-align: center; background: white; padding: 1rem; border-radius: 10px; min-width: 120px;">
-                <div style="font-size: 2rem; font-weight: bold; color: {decision_color};">{overall_score:.1f}</div>
-                <div style="font-size: 0.9rem; color: #6c757d;">Overall Score</div>
-            </div>
-            <div style="text-align: center; background: {decision_color}; color: white; padding: 1rem; border-radius: 10px; min-width: 120px;">
-                <div style="font-size: 1.2rem; font-weight: bold;">{hiring_decision}</div>
-                <div style="font-size: 0.9rem;">Decision</div>
-            </div>
-            <div style="text-align: center; background: white; padding: 1rem; border-radius: 10px; min-width: 120px;">
-                <div style="font-size: 1.5rem; font-weight: bold; color: #495057;">{success_probability:.1f}%</div>
-                <div style="font-size: 0.9rem; color: #6c757d;">Success Rate</div>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Check if this is a failed analysis
-    is_failed = not metadata.get('success', True)
-    
-    if is_failed:
-        # Display error information for failed analysis
-        st.error(f"❌ Analysis Failed: {metadata.get('error', 'Unknown error occurred during analysis')}")
-        
-        # Still show basic information if available
-        st.markdown("#### 📂 File Information")
-        st.write(f"**Filename:** {filename}")
-        
-        # Show a retry button or suggestion
-        st.info("💡 **Suggestions:**")
-        st.write("• Check if the file is a valid PDF or DOCX format")
-        st.write("• Ensure the file is not corrupted or password-protected")
-        st.write("• Verify the file contains readable text content")
-        
-        # Separator between students
-        st.markdown("---")
-        st.markdown("<br>", unsafe_allow_html=True)
-        return
-    
-    # Detailed Analysis Sections
-    col1, col2 = st.columns([1, 1])
-    
-    with col1:
-        # Personal Information
-        st.markdown("#### 👤 Candidate Information")
-        info_container = st.container()
-        with info_container:
-            st.write(f"**📧 Email:** {resume_data.get('email', 'Not provided')}")
-            st.write(f"**📞 Phone:** {resume_data.get('phone', 'Not provided')}")
-            st.write(f"**💼 Experience:** {resume_data.get('experience_years', 'N/A')} years")
-            st.write(f"**🎯 Match Level:** {match_level.title()}")
-            st.write(f"**📊 Confidence:** {confidence:.1f}%")
-    
-    with col2:
-        # Score Breakdown
-        st.markdown("#### 📊 Score Breakdown")
-        
-        hard_matching = detailed_results.get('hard_matching', {})
-        soft_matching = detailed_results.get('soft_matching', {})
-        llm_analysis = detailed_results.get('llm_analysis', {})
-        
-        # Safely convert scores to float
-        try:
-            hard_score = float(hard_matching.get('overall_score', 0))
-        except (ValueError, TypeError):
-            hard_score = 0.0
-            
-        try:
-            soft_score = float(soft_matching.get('combined_semantic_score', 0))
-        except (ValueError, TypeError):
-            soft_score = 0.0
-            
-        try:
-            llm_score = float(llm_analysis.get('llm_score', 0))
-        except (ValueError, TypeError):
-            llm_score = 0.0
-        
-        # Progress bars for scores
-        st.markdown(f"**Hard Skills Matching:** {hard_score:.1f}/100")
-        st.progress(max(0.0, min(1.0, hard_score / 100)))
-        
-        st.markdown(f"**Semantic Similarity:** {soft_score:.1f}/100")
-        st.progress(max(0.0, min(1.0, soft_score / 100)))
-        
-        st.markdown(f"**LLM Analysis Score:** {llm_score:.1f}/100")
-        st.progress(max(0.0, min(1.0, llm_score / 100)))
-    
-    # Skills Analysis
-    st.markdown("#### 🛠️ Skills Analysis")
-    if resume_data.get('skills'):
-        skills = resume_data['skills']
-        skills_cols = st.columns(3)
-        
-        # Display skills in columns
-        for i, skill in enumerate(skills[:15]):  # Show first 15 skills
-            with skills_cols[i % 3]:
-                st.markdown(f"• {skill}")
-        
-        if len(skills) > 15:
-            st.markdown(f"*... and {len(skills) - 15} more skills*")
-    else:
-        st.write("No skills extracted from resume")
-    
-    # Detailed Analysis Results
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("#### 💪 Strengths & Recommendations")
-        recommendations = analysis_results.get('recommendations', [])
-        if recommendations:
-            for i, rec in enumerate(recommendations[:5], 1):
-                st.markdown(f"**{i}.** {rec}")
-        else:
-            st.write("No specific recommendations available")
-    
-    with col2:
-        st.markdown("#### ⚠️ Areas for Improvement")
-        risk_factors = analysis_results.get('risk_factors', [])
-        if risk_factors:
-            for i, risk in enumerate(risk_factors[:5], 1):
-                st.markdown(f"**{i}.** {risk}")
-        else:
-            st.write("No major concerns identified")
-    
-    # LLM Analysis Details
-    if llm_analysis:
-        st.markdown("#### 🤖 AI-Powered Analysis")
-        
-        # Gap Analysis
-        if 'gap_analysis' in llm_analysis:
-            with st.expander("🔍 Gap Analysis", expanded=False):
-                gap_analysis = llm_analysis['gap_analysis']
-                if isinstance(gap_analysis, dict):
-                    st.write(gap_analysis.get('detailed_analysis', 'No detailed analysis available'))
-                else:
-                    st.write(gap_analysis)
-        
-        # Personalized Feedback
-        if 'personalized_feedback' in llm_analysis:
-            with st.expander("💬 Personalized Feedback", expanded=False):
-                st.write(llm_analysis['personalized_feedback'])
-        
-        # Strengths and Weaknesses from LLM
-        if 'strengths' in llm_analysis or 'weaknesses' in llm_analysis:
-            feedback_col1, feedback_col2 = st.columns(2)
-            
-            with feedback_col1:
-                if 'strengths' in llm_analysis:
-                    st.markdown("**🌟 AI-Identified Strengths:**")
-                    for strength in llm_analysis['strengths'][:3]:
-                        st.write(f"• {strength}")
-            
-            with feedback_col2:
-                if 'weaknesses' in llm_analysis:
-                    st.markdown("**🎯 Areas to Develop:**")
-                    for weakness in llm_analysis['weaknesses'][:3]:
-                        st.write(f"• {weakness}")
-    
-    # Hiring Recommendation Details
-    st.markdown("#### 🎯 Detailed Hiring Recommendation")
-    
-    recommendation_html = f"""
-    <div style="background: {decision_color}; color: white; padding: 1.5rem; border-radius: 10px; margin: 1rem 0;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-            <div style="font-size: 1.5rem; font-weight: bold;">📋 {hiring_decision}</div>
-            <div style="font-size: 1.2rem;">{success_probability:.1f}% Success Probability</div>
-        </div>
-        <div style="font-size: 1rem; line-height: 1.5;">
-            <strong>Reasoning:</strong> {hiring_rec.get('reasoning', 'No detailed reasoning provided')}
-        </div>
-    </div>
-    """
-    st.markdown(recommendation_html, unsafe_allow_html=True)
-    
-    # Action Buttons
-    st.markdown("#### 🔧 Actions & Export Options")
-    action_col1, action_col2, action_col3, action_col4 = st.columns(4)
-    
-    with action_col1:
-        # Export individual JSON
-        json_str = json.dumps(result, indent=2, default=str)
-        st.download_button(
-            label="📥 JSON",
-            data=json_str,
-            file_name=f"analysis_{student_number}_{candidate_name.replace(' ', '_')}.json",
-            mime="application/json",
-            key=f"export_individual_json_{student_number}",
-            use_container_width=True
-        )
-    
-    with action_col2:
-        # Export individual CSV
-        csv_data = create_csv_from_results([result])
-        st.download_button(
-            label="📊 CSV",
-            data=csv_data,
-            file_name=f"analysis_{student_number}_{candidate_name.replace(' ', '_')}.csv",
-            mime="text/csv",
-            key=f"export_individual_csv_{student_number}",
-            use_container_width=True
-        )
-    
-    with action_col3:
-        # Export individual Excel
-        excel_data = create_excel_from_results([result])
-        st.download_button(
-            label="� Excel",
-            data=excel_data,
-            file_name=f"analysis_{student_number}_{candidate_name.replace(' ', '_')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key=f"export_individual_excel_{student_number}",
-            use_container_width=True
-        )
-    
-    with action_col4:
-        if st.button(f"📧 Email", key=f"email_results_{student_number}", use_container_width=True):
-            st.success(f"Results would be sent to {resume_data.get('email', 'email not found')}")
-    
-    # Additional action row
-    st.markdown("---")
-    action_col5, action_col6, action_col7, action_col8 = st.columns(4)
-    
-    with action_col5:
-        if st.button(f"💾 Save to DB", key=f"save_db_{student_number}", use_container_width=True):
-            st.success("Results saved to database!")
-    
-    with action_col6:
-        if st.button(f"🔍 View Details", key=f"view_details_{student_number}", use_container_width=True):
-            st.info("Detailed view opened!")
-    
-    with action_col7:
-        if st.button(f"📋 Copy Link", key=f"copy_link_{student_number}", use_container_width=True):
-            st.info("Result link copied to clipboard!")
-    
-    with action_col8:
-        if st.button(f"🔄 Re-analyze", key=f"reanalyze_{student_number}", use_container_width=True):
-            st.info("Re-analysis requested!")
-    
-    # Separator between students
-    st.markdown("---")
-    st.markdown("<br>", unsafe_allow_html=True)
+            # Use form to prevent key conflicts
+            with st.form(key=f"email_form_{student_number}_{hash(str(result))}"):
+                if st.form_submit_button("📧 Email", use_container_width=True):
+                    st.success(f"Results would be sent to {resume_data.get('email', 'email not found')}")
 
 def show_results_viewer():
     """Show results viewer interface"""
@@ -2259,7 +1947,7 @@ def create_excel_from_results(results):
                         else:
                             # String value
                             summary_sheet.write(row_num + 1, col_num, str(value) if value is not None else '', cell_format)
-                    except (ValueError, TypeError) as e:
+                    except (ValueError, TypeError):
                         # Fallback for problematic values
                         summary_sheet.write(row_num + 1, col_num, str(value) if value is not None else '', cell_format)
             
@@ -2441,6 +2129,3 @@ def create_excel_from_results(results):
         st.error(f"Error creating Excel file: {str(e)}")
         # Fallback to CSV if Excel creation fails
         return create_csv_from_results(results).encode('utf-8')
-
-if __name__ == "__main__":
-    main()
