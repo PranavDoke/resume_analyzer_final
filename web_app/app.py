@@ -476,7 +476,7 @@ def show_dashboard():
         """, unsafe_allow_html=True)
         
         if st.button("View Results", use_container_width=True, key="results_btn"):
-            st.session_state.current_page = "� View Results"
+            st.session_state.current_page = "🔍 View Results"
             st.rerun()
     
     with col4:
