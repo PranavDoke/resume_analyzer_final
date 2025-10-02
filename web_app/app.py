@@ -521,35 +521,6 @@ def show_dashboard():
     
     st.markdown("---")
     
-    # Get Started Section
-    st.markdown("### 🚀 Get Started")
-    st.markdown("*Quick actions to begin analyzing resumes*")
-    
-    # Quick action buttons
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        if st.button("📄 Start Single Analysis", key="quick_single", use_container_width=True):
-            st.session_state.current_page = "analyze"
-            st.rerun()
-    
-    with col2:
-        if st.button("📊 Start Batch Analysis", key="quick_batch", use_container_width=True):
-            st.session_state.current_page = "batch"
-            st.rerun()
-    
-    with col3:
-        if st.button("🔍 View Past Results", key="quick_results", use_container_width=True):
-            st.session_state.current_page = "results"
-            st.rerun()
-    
-    with col4:
-        if st.button("📈 View Analytics", key="quick_analytics", use_container_width=True):
-            st.session_state.current_page = "analytics"
-            st.rerun()
-    
-    st.markdown("---")
-    
     # Recent Analysis Results (if any)
     if 'analysis_results' in st.session_state and st.session_state.analysis_results:
         st.markdown("### 📋 Recent Analysis Results")
@@ -631,22 +602,11 @@ def show_dashboard():
                         st.session_state['detailed_results'] = result
                         st.rerun()
     else:
-        # No results yet - show getting started
-        st.markdown("### 🚀 Get Started")
-        st.markdown("*Start analyzing resumes to see results here*")
+        # No results yet - show simple message
+        st.markdown("### � Recent Analysis Results")
+        st.markdown("*Latest resume analysis outcomes from your current session*")
         
-        st.markdown("""
-        <div style="background: linear-gradient(145deg, #667eea 0%, #764ba2 100%); 
-                   padding: 2rem; border-radius: 12px; text-align: center; color: white; margin: 1rem 0;">
-            <div style="font-size: 3rem; margin-bottom: 1rem;">📄</div>
-            <h3 style="margin: 0.5rem 0;">No Analysis Results Yet</h3>
-            <p style="margin: 1rem 0; opacity: 0.9;">
-                Upload your first resume and job description to get started with AI-powered analysis
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        st.info("💡 **Quick Start:** Use the sidebar navigation to go to 'Analyze Resume' and upload your first files!")
+        st.info("No analysis results yet. Use the navigation menu to start analyzing resumes.")
 
 def show_single_analysis():
     """Show single resume analysis interface"""

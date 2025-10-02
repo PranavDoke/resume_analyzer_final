@@ -6,6 +6,7 @@ from typing import Dict, Any
 # API Keys and External Services
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "your_openai_api_key_here")
 HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACE_API_KEY", "your_huggingface_api_key_here")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "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")
 
 # Database Configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/resume_analyzer.db")
@@ -82,6 +83,10 @@ def get_config() -> Dict[str, Any]:
             "openai": OPENAI_API_KEY,
             "huggingface": HUGGINGFACE_API_KEY
         },
+        "openrouter": {
+            "api_key": OPENROUTER_API_KEY,
+            "model": "meta-llama/llama-3.1-8b-instruct:free"
+        },
         "database": {
             "url": DATABASE_URL,
             "type": DATABASE_TYPE
@@ -105,4 +110,13 @@ def get_config() -> Dict[str, Any]:
 def load_config(config_path: str = None) -> Dict[str, Any]:
     """Load configuration (alias for get_config)"""
     # Ignore config_path for now, use default configuration
-    return get_config()
+    config = get_config()
+    
+    # Ensure OpenRouter config is at top level for compatibility
+    if 'openrouter' not in config and 'api_keys' in config:
+        config['openrouter'] = {
+            "api_key": OPENROUTER_API_KEY,
+            "model": "meta-llama/llama-3.1-8b-instruct:free"
+        }
+    
+    return config
