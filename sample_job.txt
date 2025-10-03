@@ -1,0 +1,13 @@
+Senior Python Developer
+
+Requirements:
+- 3+ years Python experience
+- Django/Flask web frameworks
+- AWS cloud experience
+- Docker knowledge
+- SQL database skills
+- Git version control
+
+Preferred:
+- Machine Learning experience
+- API development

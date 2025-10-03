@@ -143,24 +143,71 @@ class LLMReasoningEngine:
     def _basic_llm_analysis(self, resume_text: str, jd_text: str,
                            hard_match_results: Dict[str, Any],
                            soft_match_results: Dict[str, Any]) -> Dict[str, Any]:
-        """Perform basic LLM analysis using direct prompting"""
+        """
+        Perform basic analysis without external LLM API
+        Uses rule-based analysis combined with quantitative scores
+        """
         try:
-            # Create analysis prompt
-            prompt = self._create_analysis_prompt(
-                resume_text, jd_text, hard_match_results, soft_match_results
-            )
+            # If no LLM API available, create analysis based on hard/soft scores
+            hard_score = hard_match_results.get('overall_score', 0)
+            soft_score = soft_match_results.get('combined_semantic_score', 0)
             
-            # Generate analysis
-            llm_response = self.llm_manager.generate_text(
-                prompt,
-                max_tokens=800,
-                temperature=0.3
-            )
+            # Calculate weighted LLM score
+            llm_score = (hard_score * 0.6 + soft_score * 0.4)
             
-            # Parse response
-            parsed_results = self._parse_basic_response(llm_response)
+            # Determine verdict based on score
+            if llm_score >= 75:
+                verdict = 'good'
+            elif llm_score >= 50:
+                verdict = 'medium'
+            else:
+                verdict = 'poor'
             
-            return parsed_results
+            # Generate rule-based feedback
+            strengths = []
+            weaknesses = []
+            suggestions = []
+            
+            # Analyze skills match
+            if hard_match_results.get('skills_score', 0) >= 70:
+                strengths.append("Strong technical skills alignment with job requirements")
+            else:
+                weaknesses.append("Limited technical skills matching job requirements")
+                suggestions.append("Develop missing technical skills mentioned in the job description")
+            
+            # Analyze keyword match
+            if hard_match_results.get('keyword_score', 0) >= 60:
+                strengths.append("Good keyword alignment with job posting")
+            else:
+                weaknesses.append("Resume keywords don't strongly match job description")
+                suggestions.append("Optimize resume with more relevant keywords from the job posting")
+            
+            # Analyze semantic similarity
+            if soft_score >= 60:
+                strengths.append("Good contextual understanding and relevant experience")
+            else:
+                weaknesses.append("Limited contextual relevance to the position")
+                suggestions.append("Add more specific examples of relevant work experience")
+            
+            # Generate personalized feedback
+            feedback = f"Based on quantitative analysis (Score: {llm_score:.1f}/100), this candidate shows {verdict} fit for the position. "
+            if strengths:
+                feedback += f"Strengths include: {', '.join(strengths[:2])}. "
+            if suggestions:
+                feedback += f"Key improvement areas: {', '.join(suggestions[:2])}."
+            
+            return {
+                'llm_verdict': verdict,
+                'llm_score': round(llm_score, 1),
+                'gap_analysis': {
+                    'detailed_analysis': f"Quantitative analysis shows {verdict} match with combined score of {llm_score:.1f}",
+                    'strengths': strengths,
+                    'weaknesses': weaknesses
+                },
+                'personalized_feedback': feedback,
+                'improvement_suggestions': suggestions,
+                'match_explanation': f"Match determined by {hard_score:.1f}% hard matching and {soft_score:.1f}% semantic similarity"
+            }
             
         except Exception as e:
             logger.error(f"Basic LLM analysis failed: {str(e)}")
@@ -168,8 +215,9 @@ class LLMReasoningEngine:
                 'llm_verdict': 'medium',
                 'llm_score': 50,
                 'gap_analysis': {'error': str(e)},
-                'personalized_feedback': f"Analysis failed: {str(e)}",
-                'improvement_suggestions': []
+                'personalized_feedback': f"Analysis unavailable: {str(e)}",
+                'improvement_suggestions': ["Manual review recommended"],
+                'match_explanation': "Fallback analysis used due to system limitations"
             }
     
     def _create_analysis_prompt(self, resume_text: str, jd_text: str,

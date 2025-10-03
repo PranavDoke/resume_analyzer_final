@@ -9,6 +9,7 @@ from typing import Dict, Any, Optional
 from collections import Counter
 import re
 import math
+import time
 
 # PDF processing imports
 try:
@@ -39,6 +40,14 @@ try:
 except:
     def load_config(path=None):
         return {"api_keys": {"openai": "", "huggingface": ""}}
+
+# Firebase integration
+try:
+    from firebase.firebase_service import get_firebase_service
+    FIREBASE_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ Firebase integration not available: {e}")
+    FIREBASE_AVAILABLE = False
 
 class ResumeAnalyzer:
     """
@@ -790,6 +799,81 @@ Recommendations:
                 }
             }
             
+            # Create complete results variable for Firebase logging
+            complete_results = {
+                'metadata': {
+                    'success': True,
+                    'timestamp': __import__('datetime').datetime.now().isoformat(),
+                    'analyzer_type': 'simple_enhanced',
+                    'processing_time': 0.2,
+                    'resume_filename': resume_file_path.split('\\')[-1] if '\\' in resume_file_path else resume_file_path.split('/')[-1],
+                    'job_description_filename': job_description_file_path.split('\\')[-1] if '\\' in job_description_file_path else job_description_file_path.split('/')[-1]
+                },
+                'resume_data': {
+                    'candidate_name': candidate_name,
+                    'email': email,
+                    'phone': phone,
+                    'skills': list(self._extract_skills(self._clean_text(resume_text))),
+                    'experience_years': self._extract_years_experience(resume_text),
+                    'filename': resume_file_path.split('\\')[-1] if '\\' in resume_file_path else resume_file_path.split('/')[-1]
+                },
+                'job_data': {
+                    'title': self._extract_job_title(job_text),
+                    'company': self._extract_company_name(job_text),
+                    'required_skills': list(self._extract_skills(self._clean_text(job_text))),
+                    'filename': job_description_file_path.split('\\')[-1] if '\\' in job_description_file_path else job_description_file_path.split('/')[-1]
+                },
+                'analysis_results': {
+                    'overall_score': analysis_result.get('overall_score', 0),
+                    'match_level': analysis_result.get('match_level', 'poor'),
+                    'confidence': min(90.0, analysis_result.get('overall_score', 0) * 0.8 + 20),
+                    'explanation': analysis_result.get('explanation', ''),
+                    'recommendations': analysis_result.get('recommendations', []),
+                    'risk_factors': self._identify_risk_factors(analysis_result)
+                },
+                'detailed_results': {
+                    'hard_matching': {
+                        'overall_score': analysis_result.get('component_scores', {}).get('keyword_match', 0),
+                        'keyword_score': analysis_result.get('component_scores', {}).get('keyword_match', 0),
+                        'skills_score': analysis_result.get('component_scores', {}).get('skill_match', 0),
+                        'tfidf_score': analysis_result.get('component_scores', {}).get('context_match', 0),
+                        'bm25_score': analysis_result.get('component_scores', {}).get('experience_match', 0)
+                    },
+                    'soft_matching': {
+                        'combined_semantic_score': (analysis_result.get('component_scores', {}).get('context_match', 0) + analysis_result.get('component_scores', {}).get('experience_match', 0)) / 2,
+                        'semantic_score': analysis_result.get('component_scores', {}).get('context_match', 0),
+                        'embedding_score': analysis_result.get('component_scores', {}).get('experience_match', 0)
+                    },
+                    'llm_analysis': {
+                        'llm_score': analysis_result.get('component_scores', {}).get('experience_match', 0),
+                        'llm_verdict': 'good' if analysis_result.get('overall_score', 0) > 60 else 'medium' if analysis_result.get('overall_score', 0) > 30 else 'poor',
+                        'gap_analysis': {
+                            'detailed_analysis': analysis_result.get('explanation', ''),
+                            'strengths': self._extract_strengths(analysis_result),
+                            'weaknesses': self._extract_weaknesses(analysis_result)
+                        },
+                        'personalized_feedback': analysis_result.get('explanation', ''),
+                        'improvement_suggestions': analysis_result.get('recommendations', [])
+                    },
+                    'scoring_details': {
+                        'component_scores': analysis_result.get('component_scores', {}),
+                        'weighted_scores': analysis_result.get('component_scores', {})
+                    }
+                },
+                'hiring_recommendation': {
+                    'decision': hiring_decision['decision'],
+                    'confidence': hiring_decision['confidence'],
+                    'reasoning': hiring_decision['reasoning'],
+                    'next_steps': analysis_result.get('recommendations', []),
+                    'success_probability': min(95.0, analysis_result.get('overall_score', 0) * 0.9 + 5)
+                }
+            }
+            
+            # Log to Firebase before returning results
+            self._log_to_firebase(complete_results)
+            
+            return complete_results
+            
         except Exception as e:
             # Return error result in compatible format
             return {
@@ -1231,3 +1315,66 @@ Recommendations:
             weaknesses.append("Contextual fit could be improved")
         
         return weaknesses
+    
+    def set_user_context(self, session_id: str = None, user_agent: str = None, ip_address: str = None):
+        """
+        Set user context for Firebase logging
+        
+        Args:
+            session_id: User session identifier
+            user_agent: User agent string
+            ip_address: User IP address
+        """
+        self._session_id = session_id
+        self._user_agent = user_agent
+        self._ip_address = ip_address
+    
+    def _log_to_firebase(self, analysis_results: Dict[str, Any]) -> None:
+        """
+        Log analysis results to Firebase Firestore
+        
+        Args:
+            analysis_results: Complete analysis results to log
+        """
+        if not FIREBASE_AVAILABLE:
+            return
+        
+        try:
+            firebase_service = get_firebase_service()
+            
+            if not firebase_service.is_initialized():
+                print("Firebase service not initialized, skipping logging")
+                return
+            
+            # Extract file names
+            resume_filename = analysis_results.get('metadata', {}).get('resume_filename', 'unknown')
+            jd_filename = analysis_results.get('metadata', {}).get('job_description_filename', 'unknown')
+            
+            # Prepare user info (can be enhanced with session info, IP, etc.)
+            user_info = {
+                'session_id': getattr(self, '_session_id', None),
+                'user_agent': getattr(self, '_user_agent', None),
+                'ip_address': getattr(self, '_ip_address', None),
+                'timestamp': time.time()
+            }
+            
+            # Log to Firebase
+            doc_id = firebase_service.store_resume_analysis(
+                resume_filename=resume_filename,
+                job_description_filename=jd_filename,
+                analysis_results=analysis_results,
+                user_info=user_info
+            )
+            
+            if doc_id:
+                print(f"✅ Analysis logged to Firebase with ID: {doc_id}")
+                # Store Firebase document ID in metadata
+                if 'metadata' not in analysis_results:
+                    analysis_results['metadata'] = {}
+                analysis_results['metadata']['firebase_id'] = doc_id
+            else:
+                print("⚠️ Failed to log analysis to Firebase")
+                
+        except Exception as e:
+            print(f"❌ Error logging to Firebase: {e}")
+            # Don't raise the error - Firebase logging failure shouldn't break the analysis

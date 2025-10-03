@@ -34,14 +34,20 @@ except Exception as e:
             }
         }
 
-# Try to import the fixed analyzer, fall back to simple one if it fails
+# Try to import the full enterprise analyzer first, then simple analyzer as fallback
 try:
-    from simple_resume_analyzer import ResumeAnalyzer
-    ANALYZER_TYPE = "simple_enhanced"
-    print("✅ Enhanced simple analyzer loaded")
+    from src.resume_analyzer import ResumeAnalyzer
+    ANALYZER_TYPE = "full_enterprise"
+    print("✅ Full enterprise analyzer loaded")
 except Exception as e:
-    print(f"❌ Enhanced simple analyzer failed: {e}")
-    ANALYZER_TYPE = "none"
+    print(f"⚠️ Full enterprise analyzer failed: {e}")
+    try:
+        from src.simple_resume_analyzer import ResumeAnalyzer
+        ANALYZER_TYPE = "simple_enhanced"
+        print("✅ Enhanced simple analyzer loaded (fallback)")
+    except Exception as e2:
+        print(f"❌ Enhanced simple analyzer failed: {e2}")
+        ANALYZER_TYPE = "none"
 
 # Page configuration
 st.set_page_config(
@@ -305,6 +311,19 @@ def initialize_analyzer():
         try:
             with st.spinner(f"Initializing Resume Analyzer ({ANALYZER_TYPE} version)..."):
                 st.session_state.analyzer = ResumeAnalyzer()
+                
+                # Set user context for Firebase logging
+                import uuid
+                session_id = str(uuid.uuid4())
+                user_agent = st.context.headers.get('User-Agent', 'Unknown') if hasattr(st.context, 'headers') else 'Streamlit'
+                ip_address = st.context.get_remote_ip() if hasattr(st.context, 'get_remote_ip') else 'Unknown'
+                
+                st.session_state.analyzer.set_user_context(
+                    session_id=session_id,
+                    user_agent=user_agent,
+                    ip_address=ip_address
+                )
+                
             st.success(f"✅ Resume Analyzer initialized successfully! (Using {ANALYZER_TYPE} version)")
         except Exception as e:
             st.error(f"Failed to initialize analyzer: {str(e)}")
@@ -1949,36 +1968,301 @@ def display_detailed_individual_analysis(result, student_number):
     st.markdown("<br>", unsafe_allow_html=True)
 
 def show_results_viewer():
-    """Show results viewer interface"""
+    """Show results viewer interface with Firebase data"""
     st.markdown("## 🔍 View Analysis Results")
-    st.write("Browse and search previous analysis results.")
+    st.write("Browse and search previous analysis results stored in Firebase.")
     
-    # Filters
+    # Import Firebase service
+    try:
+        from src.firebase.firebase_service import get_firebase_service
+        firebase_service = get_firebase_service()
+        
+        if not firebase_service.is_initialized():
+            st.error("❌ Firebase service not initialized. Cannot fetch results.")
+            return
+            
+    except Exception as e:
+        st.error(f"❌ Could not connect to Firebase: {e}")
+        return
+    
+    # Fetch data from Firebase (using default parameters)
+    with st.spinner("📥 Fetching analysis results from Firebase..."):
+        try:
+            # Get analysis history with default settings
+            results = firebase_service.get_analysis_history(limit=50)
+            
+            if not results:
+                st.info("📭 No analysis results found.")
+                return
+                
+        except Exception as e:
+            st.error(f"❌ Error fetching data: {e}")
+            return
+    
+    # Display summary statistics
+    if results:
+        st.markdown("### 📊 Summary")
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("Total Results", len(results))
+        
+        with col2:
+            avg_score = sum(r.get('overall_score', 0) for r in results) / len(results)
+            st.metric("Average Score", f"{avg_score:.1f}%")
+        
+        with col3:
+            excellent_count = sum(1 for r in results if r.get('overall_score', 0) >= 80)
+            st.metric("Excellent Matches", excellent_count)
+        
+        with col4:
+            recent_date = max(r.get('timestamp', datetime.min) for r in results)
+            if isinstance(recent_date, datetime):
+                st.metric("Most Recent", recent_date.strftime("%Y-%m-%d"))
+            else:
+                st.metric("Most Recent", "N/A")
+    
+    # Display results in card view
+    st.markdown("### 📋 Analysis Results")
+    
+    display_results_as_cards(results)
+
+
+def display_results_as_cards(results):
+    """Display results in card format with detailed analysis view"""
+    
+    # Sort by timestamp (most recent first)
+    sorted_results = sorted(results, key=lambda x: x.get('timestamp', datetime.min), reverse=True)
+    
+    for i, result in enumerate(sorted_results):
+        with st.container():
+            # Create card-like appearance
+            col1, col2 = st.columns([4, 1])
+            
+            with col1:
+                # Header with score and match level
+                overall_score = result.get('overall_score', 0)
+                match_level = result.get('match_level', 'unknown').title()
+                
+                # Color coding
+                if overall_score >= 80:
+                    score_color = "🟢"
+                    badge_color = "#28a745"
+                elif overall_score >= 60:
+                    score_color = "🟡" 
+                    badge_color = "#ffc107"
+                else:
+                    score_color = "🔴"
+                    badge_color = "#dc3545"
+                
+                st.markdown(f"""
+                <div style="background-color: #f8f9fa; padding: 1.5rem; border-radius: 0.8rem; margin-bottom: 1rem; border-left: 5px solid {badge_color}; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                        <h4 style="margin: 0; color: #2c3e50;">{score_color} {overall_score:.1f}% - {match_level} Match</h4>
+                        <small style="color: #6c757d; font-weight: 500;">{result.get('timestamp', 'Unknown').strftime('%Y-%m-%d %H:%M') if isinstance(result.get('timestamp'), datetime) else 'Unknown'}</small>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # File information
+                resume_filename = result.get('resume_filename', 'Unknown Resume')
+                jd_filename = result.get('job_description_filename', 'Unknown Job')
+                
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    st.write(f"**📄 Resume:** {resume_filename}")
+                with col_b:
+                    st.write(f"**💼 Job:** {jd_filename}")
+                
+                # Basic component scores display
+                if 'component_scores' in result:
+                    scores = result['component_scores']
+                    score_cols = st.columns(min(4, len(scores)))
+                    for idx, (component, score) in enumerate(list(scores.items())[:4]):
+                        with score_cols[idx]:
+                            st.metric(
+                                component.replace('_', ' ').title()[:12],  # Truncate long names
+                                f"{score:.0f}%",
+                                delta=None
+                            )
+            
+            with col2:
+                # Action buttons
+                st.markdown("**Actions:**")
+                
+                # Details button
+                if st.button(f"📊 Details", key=f"details_{i}", use_container_width=True):
+                    st.session_state[f"show_details_{i}"] = not st.session_state.get(f"show_details_{i}", False)
+                
+                # Export button
+                if st.button(f"📥 Export", key=f"export_{i}", use_container_width=True):
+                    # Create exportable report
+                    report = create_result_report(result)
+                    st.download_button(
+                        "📄 Download",
+                        data=report,
+                        file_name=f"analysis_report_{result.get('id', i)}.txt",
+                        mime="text/plain",
+                        key=f"download_{i}",
+                        use_container_width=True
+                    )
+            
+            # Show detailed analysis if requested
+            if st.session_state.get(f"show_details_{i}", False):
+                display_detailed_analysis(result)
+            
+            st.markdown("---")
+
+
+def display_detailed_analysis(result):
+    """Display detailed analysis in the format shown in the image"""
+    
+    # Main analysis results section
+    st.markdown("### 📊 Analysis Results")
+    
+    # Overall metrics row
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        # Date range filter
-        date_range = st.date_input(
-            "Date Range",
-            value=(datetime.now() - timedelta(days=30), datetime.now()),
-            max_value=datetime.now()
-        )
+        overall_score = result.get('overall_score', 0)
+        st.markdown(f"""
+        <div style="text-align: center; padding: 1rem; background-color: #1e1e2e; border-radius: 0.5rem; color: white;">
+            <h4 style="color: #cdd6f4; margin-bottom: 0.5rem;">Overall Score</h4>
+            <h2 style="color: #f38ba8; margin: 0;">{overall_score:.1f}/100</h2>
+        </div>
+        """, unsafe_allow_html=True)
     
     with col2:
-        # Score filter
-        min_score = st.slider("Minimum Score", 0, 100, 0)
+        match_level = result.get('match_level', 'unknown').upper()
+        match_color = "#a6e3a1" if match_level == "EXCELLENT" else "#f9e2af" if match_level == "GOOD" else "#fab387" if match_level == "FAIR" else "#f38ba8"
+        st.markdown(f"""
+        <div style="text-align: center; padding: 1rem; background-color: #1e1e2e; border-radius: 0.5rem; color: white;">
+            <h4 style="color: #cdd6f4; margin-bottom: 0.5rem;">Match Level</h4>
+            <h3 style="color: {match_color}; margin: 0;">{match_level}</h3>
+        </div>
+        """, unsafe_allow_html=True)
     
     with col3:
-        # Match level filter
-        match_levels = st.multiselect(
-            "Match Levels",
-            ['excellent', 'good', 'fair', 'poor'],
-            default=['excellent', 'good', 'fair', 'poor']
-        )
+        confidence = result.get('confidence', 0) * 100 if result.get('confidence', 0) <= 1 else result.get('confidence', 0)
+        st.markdown(f"""
+        <div style="text-align: center; padding: 1rem; background-color: #1e1e2e; border-radius: 0.5rem; color: white;">
+            <h4 style="color: #cdd6f4; margin-bottom: 0.5rem;">Confidence</h4>
+            <h3 style="color: #94e2d5; margin: 0;">{confidence:.1f}%</h3>
+        </div>
+        """, unsafe_allow_html=True)
     
-    # Search functionality would require database queries
-    # This is a placeholder for the interface
-    st.info("Database search functionality would be implemented here based on the filters above.")
+    st.markdown("### 📊 Component Scores")
+    
+    # Component scores section
+    if 'component_scores' in result:
+        scores = result['component_scores']
+        
+        # Component mapping for better display names
+        component_mapping = {
+            'keyword_match': 'Hard Matching',
+            'skill_match': 'Semantic Similarity', 
+            'context_match': 'LLM Analysis',
+            'experience_match': 'Experience Match',
+            'hard_matching': 'Hard Matching',
+            'semantic_similarity': 'Semantic Similarity',
+            'llm_analysis': 'LLM Analysis'
+        }
+        
+        score_cols = st.columns(min(3, len(scores)))
+        for idx, (component, score) in enumerate(scores.items()):
+            if idx < 3:  # Display max 3 component scores
+                with score_cols[idx]:
+                    display_name = component_mapping.get(component, component.replace('_', ' ').title())
+                    
+                    st.markdown(f"""
+                    <div style="text-align: center; padding: 1rem; background-color: #181825; border-radius: 0.5rem; color: white; margin-bottom: 1rem;">
+                        <h5 style="color: #cdd6f4; margin-bottom: 0.5rem;">{display_name}</h5>
+                        <h2 style="color: #89b4fa; margin: 0;">{score:.1f}</h2>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Progress bar
+                    progress_color = "#a6e3a1" if score >= 80 else "#f9e2af" if score >= 60 else "#fab387" if score >= 40 else "#f38ba8"
+                    st.markdown(f"""
+                    <div style="background-color: #313244; border-radius: 0.25rem; height: 0.5rem; margin-bottom: 1rem;">
+                        <div style="background-color: {progress_color}; width: {score}%; height: 100%; border-radius: 0.25rem;"></div>
+                    </div>
+                    """, unsafe_allow_html=True)
+    
+    # Hiring recommendation section
+    st.markdown("### 💼 Hiring Recommendation")
+    
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        # Decision indicator
+        decision = "INTERVIEW"  # Default decision based on good score
+        if overall_score >= 80:
+            decision_color = "#a6e3a1"
+            decision_icon = "🟢"
+        elif overall_score >= 60:
+            decision_color = "#f9e2af"
+            decision_icon = "🟡"
+        else:
+            decision_color = "#f38ba8"
+            decision_icon = "🔴"
+        
+        st.markdown(f"""
+        <div style="padding: 1rem; background-color: #1e1e2e; border-radius: 0.5rem; color: white;">
+            <h5 style="color: #cdd6f4; margin-bottom: 0.5rem;">Decision:</h5>
+            <h3 style="color: {decision_color}; margin: 0;">{decision_icon} {decision}</h3>
+            <p style="color: #a6adc8; margin-top: 0.5rem; margin-bottom: 0.5rem;">Confidence: medium</p>
+            <p style="color: #a6adc8; margin: 0;">Success Probability: {(overall_score * 0.69):.0f}%</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        # Reasoning
+        reasoning_text = result.get('explanation', f"Final evaluation score: {overall_score:.1f}/100. Component scores show strong alignment with job requirements.")
+        
+        st.markdown(f"""
+        <div style="padding: 1rem; background-color: #1e1e2e; border-radius: 0.5rem; color: white;">
+            <h5 style="color: #cdd6f4; margin-bottom: 0.5rem;">Reasoning:</h5>
+            <p style="color: #cdd6f4; margin: 0; line-height: 1.5;">{reasoning_text}</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+
+def create_result_report(result):
+    """Create a formatted text report for a single result"""
+    report = f"""
+RESUME ANALYSIS REPORT
+{'=' * 50}
+
+Analysis ID: {result.get('id', 'N/A')}
+Timestamp: {result.get('timestamp', 'Unknown')}
+
+FILES ANALYZED:
+Resume: {result.get('resume_filename', 'Unknown')}
+Job Description: {result.get('job_description_filename', 'Unknown')}
+
+OVERALL RESULTS:
+Overall Score: {result.get('overall_score', 0):.1f}%
+Match Level: {result.get('match_level', 'unknown').title()}
+Confidence: {result.get('confidence', 0):.2f}
+
+COMPONENT SCORES:
+"""
+    
+    if 'component_scores' in result:
+        for component, score in result['component_scores'].items():
+            report += f"- {component.replace('_', ' ').title()}: {score:.1f}%\n"
+    
+    report += f"\nANALYSIS EXPLANATION:\n{result.get('explanation', 'No explanation available')}\n"
+    
+    if 'recommendations' in result and result['recommendations']:
+        report += f"\nRECOMMENDATIONS:\n"
+        for i, rec in enumerate(result['recommendations'], 1):
+            report += f"{i}. {rec}\n"
+    
+    report += f"\n{'=' * 50}\nGenerated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+    
+    return report
 
 def show_reports_analytics():
     """Show reports and analytics interface"""

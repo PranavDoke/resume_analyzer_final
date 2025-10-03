@@ -1,0 +1,15 @@
+John Doe
+Software Engineer
+
+Experience:
+- 5 years Python development
+- Experience with Django, Flask
+- AWS cloud services
+- Machine Learning with scikit-learn
+- Docker containerization
+
+Skills:
+Python, JavaScript, AWS, Docker, Django, Flask, SQL, Git
+
+Education:
+Bachelor's in Computer Science

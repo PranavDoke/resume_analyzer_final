@@ -12,13 +12,13 @@ import sys
 sys.path.append(os.path.dirname(__file__))
 
 try:
-    from langchain.llms import OpenAI
-    from langchain.chat_models import ChatOpenAI
+    from langchain_community.llms import OpenAI
+    from langchain_community.chat_models import ChatOpenAI
     from langchain.prompts import ChatPromptTemplate, PromptTemplate
     from langchain.chains import LLMChain
     from langchain.schema import BaseOutputParser
     from langchain.output_parsers import PydanticOutputParser, CommaSeparatedListOutputParser
-    from langchain.callbacks import get_openai_callback
+    from langchain_community.callbacks.manager import get_openai_callback
     LANGCHAIN_AVAILABLE = True
 except ImportError:
     LANGCHAIN_AVAILABLE = False

@@ -36,7 +36,7 @@ class DocumentParser:
         self.docx_extractor = DOCXExtractor()
         self.text_normalizer = TextNormalizer(spacy_model)
         
-        self.supported_formats = {'.pdf', '.docx', '.doc'}
+        self.supported_formats = {'.pdf', '.docx', '.doc', '.txt'}
     
     def is_supported_format(self, file_path: Union[str, Path]) -> bool:
         """
@@ -78,6 +78,19 @@ class DocumentParser:
                 result = self.pdf_extractor.extract_text(str(file_path), method)
             elif file_extension in ['.docx', '.doc']:
                 result = self.docx_extractor.extract_text(str(file_path), method)
+            elif file_extension == '.txt':
+                # Handle plain text files
+                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read()
+                result = {
+                    'text': content,
+                    'success': True,
+                    'metadata': {
+                        'extraction_method': 'text_file',
+                        'page_count': 1,
+                        'char_count': len(content)
+                    }
+                }
             else:
                 raise ValueError(f"Unsupported format: {file_extension}")
             
@@ -121,6 +134,20 @@ class DocumentParser:
                 result = self.pdf_extractor.extract_structured_content(str(file_path))
             elif file_extension in ['.docx', '.doc']:
                 result = self.docx_extractor.extract_structured_content(str(file_path))
+            elif file_extension == '.txt':
+                # Handle plain text files - convert to basic structured format
+                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read()
+                result = {
+                    'text': content,
+                    'tables': [],
+                    'metadata': {
+                        'extraction_method': 'text_file',
+                        'page_count': 1,
+                        'char_count': len(content)
+                    },
+                    'success': True
+                }
             else:
                 raise ValueError(f"Unsupported format: {file_extension}")
             

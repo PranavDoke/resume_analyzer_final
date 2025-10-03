@@ -21,6 +21,14 @@ from scoring import ScoringEngine, RelevanceScore
 from database import DatabaseManager, ExportManager
 from config.settings import load_config
 
+# Firebase integration
+try:
+    from firebase.firebase_service import get_firebase_service
+    FIREBASE_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ Firebase integration not available: {e}")
+    FIREBASE_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 class ResumeAnalyzer:
@@ -113,7 +121,9 @@ class ResumeAnalyzer:
         """Initialize embedding generator on-demand"""
         if self.embedding_generator is None:
             try:
-                self.embedding_generator = EmbeddingGenerator(self.config)
+                embedding_config = self.config.get('llm', {})
+                model_name = embedding_config.get('backup_model', 'all-MiniLM-L6-v2')
+                self.embedding_generator = EmbeddingGenerator(model_name)
                 logger.info("Embedding generator initialized on-demand")
             except Exception as e:
                 logger.error(f"Failed to initialize embedding generator: {e}")
@@ -124,7 +134,16 @@ class ResumeAnalyzer:
         if self.soft_matcher is None:
             try:
                 self._ensure_embedding_generator()  # Soft matcher needs embedding generator
-                self.soft_matcher = SoftMatcher(self.config)
+                
+                # Extract soft matcher config parameters
+                vector_config = self.config.get('vector_db', {})
+                embedding_config = self.config.get('llm', {})
+                
+                self.soft_matcher = SoftMatcher(
+                    embedding_model=embedding_config.get('backup_model', 'all-MiniLM-L6-v2'),
+                    vector_db_type=vector_config.get('type', 'chroma'),
+                    persist_directory=vector_config.get('persist_directory', './data/vector_db')
+                )
                 logger.info("Soft matcher initialized on-demand")
             except Exception as e:
                 logger.error(f"Failed to initialize soft matcher: {e}")
@@ -162,9 +181,32 @@ class ResumeAnalyzer:
             resume_data = self._parse_resume(resume_file_path)
             jd_data = self._parse_job_description(job_description_file_path)
             
-            # Step 2: Perform matching analysis
+            # Step 2: Perform matching analysis with fallback to simple analyzer
             hard_results = self._perform_hard_matching(resume_data, jd_data)
             soft_results = self._perform_soft_matching(resume_data, jd_data)
+            
+            # Debug: Check analysis results
+            logger.info(f"Hard matching score: {hard_results.get('overall_score', 0)}")
+            logger.info(f"Soft matching score: {soft_results.get('combined_semantic_score', 0)}")
+            
+            # Check if enterprise analysis failed and use simple analyzer fallback
+            # Use fallback if either hard matching failed or both have very low scores
+            hard_score = hard_results.get('overall_score', 0)
+            soft_score = soft_results.get('combined_semantic_score', 0)
+            
+            fallback_used = False
+            simple_analysis_result = None
+            
+            if (hard_score == 0 or 'error' in hard_results or 
+                (hard_score < 5 and soft_score < 5)):
+                logger.warning("Enterprise analysis failed or produced very low scores, using simple analyzer fallback")
+                fallback_results = self._use_simple_analyzer_fallback(resume_data, jd_data)
+                if fallback_results:
+                    hard_results = fallback_results['hard_results']
+                    soft_results = fallback_results['soft_results']
+                    simple_analysis_result = fallback_results['simple_analysis']
+                    fallback_used = True
+                    logger.info("Successfully applied simple analyzer fallback")
             
             # Step 3: LLM analysis
             llm_results = self._perform_llm_analysis(resume_data, jd_data, hard_results, soft_results)
@@ -173,7 +215,35 @@ class ResumeAnalyzer:
             self._ensure_scoring_engine()
             
             # Step 5: Calculate final score
-            relevance_score = self._calculate_relevance_score(hard_results, soft_results, llm_results)
+            if fallback_used and simple_analysis_result:
+                # Use simple analyzer score directly when fallback is used
+                from scoring import MatchLevel
+                overall_score = simple_analysis_result['overall_score']
+                
+                # Convert score to match level
+                if overall_score >= 80:
+                    match_level = MatchLevel.EXCELLENT
+                elif overall_score >= 60:
+                    match_level = MatchLevel.GOOD
+                elif overall_score >= 40:
+                    match_level = MatchLevel.FAIR
+                else:
+                    match_level = MatchLevel.POOR
+                
+                relevance_score = type('RelevanceScore', (), {
+                    'overall_score': overall_score,
+                    'match_level': match_level,
+                    'confidence': 0.85,  # High confidence for simple analyzer
+                    'component_scores': simple_analysis_result['component_scores'],
+                    'weighted_scores': simple_analysis_result['component_scores'],
+                    'explanation': simple_analysis_result['explanation'],
+                    'recommendations': simple_analysis_result['recommendations'],
+                    'risk_factors': []
+                })()
+                
+                logger.info(f"Using simple analyzer score: {overall_score}")
+            else:
+                relevance_score = self._calculate_relevance_score(hard_results, soft_results, llm_results)
             
             # Step 6: Generate hiring recommendation
             hiring_recommendation = self._generate_hiring_recommendation({
@@ -233,6 +303,9 @@ class ResumeAnalyzer:
             if save_to_db:
                 analysis_id = self._save_analysis_to_db(complete_results, resume_data, jd_data)
                 complete_results['metadata']['analysis_id'] = analysis_id
+            
+            # Step 8: Log to Firebase
+            self._log_to_firebase(complete_results)
             
             logger.info(f"Analysis completed successfully in {processing_time:.2f} seconds")
             return complete_results
@@ -318,9 +391,8 @@ class ResumeAnalyzer:
             self._ensure_hard_matcher()  # Initialize on-demand
             return self.hard_matcher.analyze_match(
                 resume_text=resume_data.get('processed_text', ''),
-                job_description=jd_data.get('processed_text', ''),
-                resume_skills=resume_data.get('skills', []),
-                required_skills=jd_data.get('required_skills', [])
+                jd_text=jd_data.get('processed_text', ''),
+                include_detailed=True
             )
         except Exception as e:
             logger.error(f"Hard matching failed: {str(e)}")
@@ -338,7 +410,7 @@ class ResumeAnalyzer:
             self._ensure_soft_matcher()  # Initialize on-demand
             return self.soft_matcher.analyze_semantic_similarity(
                 resume_text=resume_data.get('processed_text', ''),
-                job_description=jd_data.get('processed_text', '')
+                jd_text=jd_data.get('processed_text', '')
             )
         except Exception as e:
             logger.error(f"Soft matching failed: {str(e)}")
@@ -635,3 +707,144 @@ class ResumeAnalyzer:
             health_status['status'] = 'unhealthy'
         
         return health_status
+    
+    def _log_to_firebase(self, analysis_results: Dict[str, Any]) -> None:
+        """
+        Log analysis results to Firebase Firestore
+        
+        Args:
+            analysis_results: Complete analysis results to log
+        """
+        if not FIREBASE_AVAILABLE:
+            return
+        
+        try:
+            firebase_service = get_firebase_service()
+            
+            if not firebase_service.is_initialized():
+                logger.warning("Firebase service not initialized, skipping logging")
+                return
+            
+            # Extract file names
+            resume_filename = analysis_results.get('metadata', {}).get('resume_filename', 'unknown')
+            jd_filename = analysis_results.get('metadata', {}).get('job_description_filename', 'unknown')
+            
+            # Prepare user info (can be enhanced with session info, IP, etc.)
+            user_info = {
+                'session_id': getattr(self, '_session_id', None),
+                'user_agent': getattr(self, '_user_agent', None),
+                'ip_address': getattr(self, '_ip_address', None),
+                'timestamp': time.time()
+            }
+            
+            # Log to Firebase
+            doc_id = firebase_service.store_resume_analysis(
+                resume_filename=resume_filename,
+                job_description_filename=jd_filename,
+                analysis_results=analysis_results,
+                user_info=user_info
+            )
+            
+            if doc_id:
+                logger.info(f"✅ Analysis logged to Firebase with ID: {doc_id}")
+                # Store Firebase document ID in metadata
+                if 'metadata' not in analysis_results:
+                    analysis_results['metadata'] = {}
+                analysis_results['metadata']['firebase_id'] = doc_id
+            else:
+                logger.warning("⚠️ Failed to log analysis to Firebase")
+                
+        except Exception as e:
+            logger.error(f"❌ Error logging to Firebase: {e}")
+            # Don't raise the error - Firebase logging failure shouldn't break the analysis
+    
+    def _use_simple_analyzer_fallback(self, resume_data: Dict[str, Any], jd_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Fallback to simple analyzer when enterprise components fail
+        """
+        try:
+            logger.info("Using simple analyzer fallback for reliable analysis")
+            
+            # Import simple analyzer
+            from simple_resume_analyzer import ResumeAnalyzer as SimpleAnalyzer
+            
+            simple_analyzer = SimpleAnalyzer()
+            
+            # Get text content - try multiple fields
+            resume_text = (resume_data.get('processed_text', '') or 
+                          resume_data.get('text', '') or 
+                          resume_data.get('raw_text', '') or
+                          resume_data.get('cleaned_text', '') or
+                          resume_data.get('normalized_text', ''))
+            jd_text = (jd_data.get('processed_text', '') or 
+                      jd_data.get('text', '') or 
+                      jd_data.get('raw_text', '') or
+                      jd_data.get('cleaned_text', '') or
+                      jd_data.get('normalized_text', ''))
+            
+            logger.info(f"Resume text length: {len(resume_text)}, JD text length: {len(jd_text)}")
+            
+            if not resume_text or not jd_text:
+                logger.error(f"No text content available for simple analyzer fallback. Resume: {len(resume_text)}, JD: {len(jd_text)}")
+                logger.error(f"Resume data keys: {list(resume_data.keys())}")
+                logger.error(f"JD data keys: {list(jd_data.keys())}")
+                # Print first 100 chars of each field for debugging
+                for key, value in resume_data.items():
+                    if isinstance(value, str) and value:
+                        logger.error(f"Resume {key} (len={len(value)}): {value[:100]}...")
+                return None
+            
+            # Perform simple analysis
+            logger.info("Calling simple analyzer with text content...")
+            simple_result = simple_analyzer.analyze_resume(resume_text, jd_text)
+            
+            logger.info(f"Simple analyzer result: {simple_result}")
+            
+            if not simple_result:
+                logger.error("Simple analyzer returned None/empty result")
+                return None
+            
+            # Convert simple results to enterprise format
+            hard_results = {
+                'overall_score': simple_result['component_scores']['keyword_match'],
+                'keyword_score': simple_result['component_scores']['keyword_match'],
+                'skills_score': simple_result['component_scores']['skill_match'],
+                'tfidf_score': simple_result['component_scores']['context_match'],
+                'bm25_score': simple_result['component_scores']['experience_match'],
+                'method': 'simple_analyzer_fallback'
+            }
+            
+            soft_results = {
+                'combined_semantic_score': (simple_result['component_scores']['context_match'] + 
+                                          simple_result['component_scores']['experience_match']) / 2,
+                'semantic_score': simple_result['component_scores']['context_match'],
+                'embedding_score': simple_result['component_scores']['experience_match'],
+                'method': 'simple_analyzer_fallback'
+            }
+            
+            logger.info(f"Simple analyzer fallback completed - Overall score: {simple_result['overall_score']}")
+            
+            return {
+                'hard_results': hard_results,
+                'soft_results': soft_results,
+                'simple_analysis': simple_result
+            }
+            
+        except Exception as e:
+            logger.error(f"Simple analyzer fallback failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    def set_user_context(self, session_id: str = None, user_agent: str = None, ip_address: str = None):
+        """
+        Set user context for Firebase logging
+        
+        Args:
+            session_id: User session identifier
+            user_agent: User agent string
+            ip_address: User IP address
+        """
+        self._session_id = session_id
+        self._user_agent = user_agent
+        self._ip_address = ip_address

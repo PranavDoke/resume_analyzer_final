@@ -1,0 +1,89 @@
+"""
+Complete Firebase Setup Guide for Resume Analyzer
+Follow these steps exactly to connect your Firebase database
+"""
+
+# 🔥 FIREBASE SETUP CHECKLIST
+
+## ✅ Step 1: Firebase Console Setup
+
+1. Go to: https://console.firebase.google.com/
+2. Click "Create a project" 
+3. Project name: "resume-analyzer" (or your choice)
+4. Enable/disable Google Analytics (your choice)
+5. Click "Create project"
+
+## ✅ Step 2: Enable Firestore Database
+
+1. In Firebase console, go to "Build" → "Firestore Database"
+2. Click "Create database"
+3. Choose "Start in test mode" (for development)
+4. Select location (choose closest to you)
+5. Click "Done"
+
+## ✅ Step 3: Generate Service Account
+
+1. In Firebase console, click gear icon ⚙️ → "Project settings"
+2. Go to "Service accounts" tab
+3. Click "Generate new private key"
+4. Click "Generate key" - downloads a JSON file
+5. Rename the downloaded file to: `firebase_service_account.json`
+
+## ✅ Step 4: Place Credentials in Your Project
+
+Copy your `firebase_service_account.json` file to:
+```
+resume_analyzer_final/
+├── config/
+│   └── firebase_service_account.json  ← Place here
+```
+
+## ✅ Step 5: Update Configuration
+
+1. Open: `src/firebase/firebase_config.py`
+2. Find line with: `"project_id": os.getenv("FIREBASE_PROJECT_ID", "PUT_YOUR_FIREBASE_PROJECT_ID_HERE")`
+3. Replace "PUT_YOUR_FIREBASE_PROJECT_ID_HERE" with your actual Firebase project ID
+
+**How to find your Firebase Project ID:**
+- In Firebase console, click gear icon ⚙️ → "Project settings"
+- Your Project ID is shown at the top of the page
+
+Example:
+```python
+"project_id": os.getenv("FIREBASE_PROJECT_ID", "resume-analyzer-12345"),
+```
+
+## ✅ Step 6: Test the Connection
+
+Run the test script:
+```bash
+python test_firebase_integration.py
+```
+
+You should see:
+- ✅ Firebase Admin SDK: Installed
+- ✅ Configuration: Valid  
+- ✅ Service: Ready
+- ✅ Integration: Complete
+
+## 🎯 That's it! 
+
+Once completed, every resume analysis will automatically log to your Firebase database in the `resumeanalyser` collection with detailed scoring data.
+
+## 📊 What Data Gets Stored
+
+Each resume analysis creates a document with:
+- Overall score and match level
+- Detailed component scores (Skills, Keywords, Semantic, LLM)
+- Found/missing skills and keywords
+- Hiring recommendation and confidence
+- User session information
+- Timestamp and file names
+
+## 🔍 View Your Data
+
+Go to Firebase Console → Firestore Database → Data tab to see your collected analytics.
+
+## ⚠️ Security Note
+
+Keep your `firebase_service_account.json` file secure and never commit it to version control!
