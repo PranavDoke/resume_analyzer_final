@@ -48,6 +48,9 @@ env/
 venv/
 ENV/
 env.bak/
+
+# Firebase credentials
+config/firebase_service_account.json
 venv.bak/
 
 # IDE
